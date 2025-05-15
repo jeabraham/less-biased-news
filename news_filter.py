@@ -300,12 +300,21 @@ def generate_html(results: dict) -> str:
             status = art.get("status", "")
             content = art.get("content", art.get("description", ""))
 
-            html.append(
-                "      <li>"
-                f"[{status}] <a href='{url}' target='_blank'>{title}</a>"
-                f"<p>{content}</p>"
-                "</li>"
-            )
+            html.append("      <li>")
+            html.append(f"        [{status}] <a href='{url}' target='_blank'>{title}</a>")
+
+            # split on double newlines first, then single newlines
+            paragraphs = []
+            for block in content.split("\n\n"):
+                for para in block.split("\n"):
+                    text = para.strip()
+                    if text:
+                        paragraphs.append(text)
+
+            for para in paragraphs:
+                html.append(f"        <p>{para}</p>")
+
+            html.append("      </li>")
 
         html.append("    </ul>")
 
