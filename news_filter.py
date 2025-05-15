@@ -79,6 +79,16 @@ def summarize(text: str, cfg: dict, client: OpenAI) -> str:
         logger.warning(f"OpenAI summarization error: {e}")
         return text
 
+def clean_summary(text: str, cfg: dict, client: OpenAI) -> str:
+    prompt = cfg["prompts"]["clean_summary"].format(text=text)
+    resp = client.chat.completions.create(
+        model=cfg["openai"]["model"],
+        temperature=cfg["openai"]["temperature"],
+        max_tokens=4000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return resp.choices[0].message.content.strip()
+
 
 def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
     prompt = cfg["prompts"]["spin_genders"].format(text=text)
@@ -224,9 +234,20 @@ def fetch_and_filter(cfg: dict) -> dict:
                 # and you can log rejection reasons here
 
             art["status"] = status
-            if status in ("female_leader", "show-full"):
-                  # keep the full fetched body
-                  art["content"] = body
+            if status == "female_leader":
+                # if this is a female_leader and we want a clean summary…
+                summarize_selected = qcfg.get(
+                   "summarize_selected",
+                   cfg.get("default_summarize_selected", False)
+                )
+                if summarize_selected:
+                   logger.info(f"Clean-summarizing '{art['title']}'")
+                   art["content"] = clean_summary(body, cfg, openai_client)
+                else:
+                   # keep the full fetched body
+                   art["content"] = body
+            elif status == "show-full":
+                art["content"] = body
             elif status == "summarize":
                   art["content"] = summarize(body, cfg, openai_client)
             elif status == "spin-genders":
