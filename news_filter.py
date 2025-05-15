@@ -10,7 +10,7 @@ import argparse
 import requests
 from article_fetcher import fetch_full_text_and_image
 from typing import List, Tuple, Set
-from analyze_image_gender import analyze_image_gender
+from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
 
 # ─── Logging Setup ────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ from datetime import date, timedelta
 
 import json
 
-def fetch_mediastack(qcfg: dict, cfg: dict, use_cache: bool = False, cache_dir: str = "cache") -> list:
+def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: str = "cache") -> list:
     """
     Fetch articles from Mediastack, or if use_cache=True and a cached file exists,
     load from disk instead of hitting the API.  Always saves live results to cache.
@@ -121,7 +121,7 @@ def fetch_mediastack(qcfg: dict, cfg: dict, use_cache: bool = False, cache_dir: 
     # ensure cache directory
     os.makedirs(cache_dir, exist_ok=True)
     # derive a safe filename from the query name
-    safe_name = "".join(c if c.isalnum() or c in (" ", "_", "-") else "_" for c in cfg["name"])
+    safe_name = "".join(c if c.isalnum() or c in (" ", "_", "-") else "_" for c in qcfg["name"])
     cache_file = os.path.join(cache_dir, f"{safe_name}.json")
 
     # 1) Try loading from cache
@@ -213,19 +213,10 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
             # 1) attach the raw image URL
             art["image_url"] = image_url
 
-            # 2) run face-gender analysis and possibly drop/mark the image
-            faces = analyze_image_gender(image_url)
-            if faces:
-                best = max(faces, key=lambda f: f["prominence"])
-                if best["gender"].lower() == "woman":
-                    art["image_status"] = "female"
-                    art["image_prominence"] = best["prominence"]
-                else:
-                    # predominantly male face → remove image
-                    art["image_url"] = ""
-                    art["image_status"] = "dropped_male"
-            else:
-                art["image_status"] = "no_face"
+            #Set the default status for the image
+            art["image_status"] = "not_a_female_story"
+
+            female_faces(art, image_url)
 
             doc = nlp(body)
             persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
@@ -288,6 +279,34 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
         results[name] = hits
 
     return results
+
+
+def female_faces(art, image_url):
+    faces = analyze_image_gender(image_url)
+    female_faces = [
+        f for f in faces
+        if f["gender"] == "Woman" and f["confidence"] >= FEMALE_CONFIDENCE_THRESHOLD
+    ]
+    total_faces = len(faces)
+    num_female = len(female_faces)
+
+    if total_faces > 0 and num_female > total_faces / 2:
+        # More than half the faces are women → keep image
+        art["image_status"] = "female_majority"
+        # record average prominence of female faces if you like
+        art["image_prominence"] = sum(f["prominence"] for f in female_faces) / num_female
+    elif faces:
+        # fallback to the most prominent‐face rule
+        best = max(faces, key=lambda f: f["prominence"])
+        if best["gender"] == "Woman" and best["confidence"] >= FEMALE_CONFIDENCE_THRESHOLD:
+            art["image_status"] = "female_prominent"
+            art["image_prominence"] = best["prominence"]
+        else:
+            # drop it if the single best face isn’t a confident woman
+            art["image_status"] = "dropped_male_or_low_confidence"
+    else:
+        # no faces detected
+        art["image_status"] = "no_face"
 
 
 def guess_genders(all_persons, gndr):
@@ -404,17 +423,28 @@ def generate_html(results: dict) -> str:
             html.append(f"        [{status}] <a href='{url}' target='_blank'>{title}</a>")
 
             if art.get("image_url"):
-                # choose size based on prominence
-                prom = art.get("image_prominence", 0)
-                if art["image_status"] == "female" and prom > 0.2:
-                    size = "max-width:500px;"
+                image_status = art.get("image_status", "")
+                # 1) Determine base size by detected face
+                if image_status in ("female", "female_majority", "female_prominent"):
+                    base = 300
+                elif image_status == "no_face":
+                    base = 200
+                else:  # male or dropped images
+                    base = 100
+
+                # 2) Double only when this is a female_leader AND we actually have a female face
+                if art.get("status") == "female_leader" and image_status in (
+                "female", "female_majority", "female_prominent"):
+                    final = base * 2
                 else:
-                    size = "max-width:300px;"
+                    final = base
+
+                size_style = f"max-width:{final}px;"
                 html.append(
-                    f"<figure>"
-                    f"  <img src='{art['image_url']}' alt='' "
-                    f"style='{size}display:block;margin:0.5em 0;'>"
-                    f"</figure>"
+                    "<figure>"
+                    f"<img src='{art['image_url']}' alt='' "
+                    f"style='{size_style} display:block; margin:0.5em 0;'>"
+                    "</figure>"
                 )
 
             # split on double newlines first, then single newlines

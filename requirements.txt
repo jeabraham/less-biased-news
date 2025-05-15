@@ -11,4 +11,4 @@ lxml
 gender-guesser
 deepface
 opencv-python-headless
-tf-keras
+facenet-pytorch
