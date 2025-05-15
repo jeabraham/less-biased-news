@@ -5,7 +5,7 @@ import spacy
 import requests
 from newsapi import NewsApiClient
 from genderize import Genderize
-import openai
+from openai import OpenAI
 
 # ─── Logging Setup ────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -37,12 +37,10 @@ def load_config(path: str = "config.yaml") -> dict:
 def classify_leadership(text: str, cfg: dict) -> bool:
     prompt = cfg["prompts"]["classification"] + "\n\n" + text
     logger.debug("Running zero-shot classification for leadership")
-    resp = openai.ChatCompletion.create(
-        model=cfg["openai"]["model"],
-        temperature=cfg["openai"]["temperature"],
-        max_tokens=1,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    resp = client.chat.completions.create(model=cfg["openai"]["model"],
+    temperature=cfg["openai"]["temperature"],
+    max_tokens=1,
+    messages=[{"role": "user", "content": prompt}])
     answer = resp.choices[0].message.content.strip().lower()
     logger.debug(f"Classification result: '{answer}'")
     return answer == "yes"
@@ -50,12 +48,10 @@ def classify_leadership(text: str, cfg: dict) -> bool:
 def summarize(text: str, cfg: dict) -> str:
     p = cfg["prompts"]["summarize"].format(text=text)
     logger.debug("Requesting summary from OpenAI")
-    resp = openai.ChatCompletion.create(
-        model=cfg["openai"]["model"],
-        temperature=cfg["openai"]["temperature"],
-        max_tokens=60,
-        messages=[{"role": "user", "content": p}]
-    )
+    resp = client.chat.completions.create(model=cfg["openai"]["model"],
+    temperature=cfg["openai"]["temperature"],
+    max_tokens=60,
+    messages=[{"role": "user", "content": p}])
     summary = resp.choices[0].message.content.strip()
     logger.info("Received summary")
     return summary
@@ -63,12 +59,10 @@ def summarize(text: str, cfg: dict) -> str:
 def spin_genders(text: str, cfg: dict) -> str:
     p = cfg["prompts"]["spin_genders"].format(text=text)
     logger.debug("Requesting gender-spin rewrite from OpenAI")
-    resp = openai.ChatCompletion.create(
-        model=cfg["openai"]["model"],
-        temperature=cfg["openai"]["temperature"],
-        max_tokens=200,
-        messages=[{"role": "user", "content": p}]
-    )
+    resp = client.chat.completions.create(model=cfg["openai"]["model"],
+    temperature=cfg["openai"]["temperature"],
+    max_tokens=200,
+    messages=[{"role": "user", "content": p}])
     spun = resp.choices[0].message.content.strip()
     logger.info("Received spin-genders rewrite")
     return spun
@@ -81,7 +75,6 @@ def fetch_and_filter(cfg: dict) -> dict:
     logger.info("Loading spaCy model")
     nlp = spacy.load("en_core_web_sm")
     gndr = Genderize()
-    openai.api_key = cfg["openai"]["api_key"]
 
     results = {}
     for qcfg in cfg["queries"]:
@@ -182,6 +175,9 @@ def main(
     logger.info("Starting news_filter module")
     cfg = load_config(config_path)
     results = fetch_and_filter(cfg)
+
+    # Initialize the OpenAI client
+    client = OpenAI(api_key=cfg["openai"]["api_key"])
 
     if fmt == "html":
         content = generate_html(results)
