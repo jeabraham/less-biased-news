@@ -9,11 +9,13 @@ A Python tool for fetching and filtering news articles through NewsAPI, enriched
 
 ## Virtual Environment Setup
 
-Create and activate an isolated virtual environment:
+Because of a temporary NumPy compatibility issue, ensure you have **Python 3.12** installed and available as `python3.12` on your PATH.
+
+Create and activate an isolated virtual environment with Python 3.12:
 
 ```bash
-# Create a venv directory
-python3 -m venv venv
+# Create a venv directory using Python 3.12
+python3.12 -m venv venv
 
 # macOS/Linux
 source venv/bin/activate
@@ -22,7 +24,15 @@ source venv/bin/activate
 venv\Scripts\Activate.ps1
 ```
 
+Once activated, confirm you’re using the correct Python version:
+
+```bash
+python --version  # should show Python 3.12.x
+```
+
 ## Installation
+
+⚠️ **Temporary Note:** Due to a known NumPy compatibility issue, please use **Python 3.12** for this setup.
 
 1. **Upgrade pip** (optional):
 
