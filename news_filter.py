@@ -107,25 +107,46 @@ def fetch_and_filter(cfg: dict) -> dict:
                 language=cfg["newsapi"].get("language", "en"),
                 page_size=qcfg.get("page_size", 100)
             )
+            articles = resp.get("articles", [])
+            logger.debug(f"Fetched {len(articles)} articles for '{name}'")
         except Exception as e:
             logger.error(f"NewsAPI query failed for '{name}': {e}")
+            results[name] = []
             continue
 
+        # Batch extract all person names for gender detection
+        name_set = set()
+        for art in articles:
+            text = " ".join(filter(None, [art.get("title"), art.get("description")]))
+            doc = nlp(text)
+            for ent in doc.ents:
+                if ent.label_ == "PERSON":
+                    name_set.add(ent.text)
+        # Attempt batch genderize
+        try:
+            genders_list = gndr.get(list(name_set))
+            gender_map = {g["name"]: g.get("gender") for g in genders_list}
+            logger.info(f"Genderize batch returned {len(gender_map)} names for '{name}'")
+        except Exception as e:
+            logger.warning(f"Genderize API error for query '{name}': {e}")
+            gender_map = {}
+
         hits = []
-        for art in resp.get("articles", []):
+        for art in articles:
             url = art.get("url", "")
             full_text = fetch_full_text(url) if qcfg.get("classification", False) else ""
             base_text = full_text or " ".join(filter(None, [art.get("title"), art.get("description")]))
 
+            # If no classification needed, include as-is
             if not qcfg.get("classification", False):
                 art["full_text"] = full_text
                 hits.append(art)
                 continue
 
+            # Use precomputed gender map
             doc = nlp(base_text)
             people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-            genders = gndr.get(people) if people else []
-            female_names = {g["name"] for g in genders if g.get("gender") == "female"}
+            female_names = {p for p in people if gender_map.get(p) == "female"}
             has_keyword = any(
                 kw.lower() in base_text.lower()
                 for kw in cfg.get("leadership_keywords", [])
@@ -183,7 +204,7 @@ def generate_html(results: dict) -> str:
             snippet = art.get("snippet", art.get("description", ""))
             text = art.get("full_text", "")
             content = snippet or text
-            html.append(f"<li><a href='{url}'}>{title}</a><p>{content}</p></li>")
+            html.append(f"<li><a href='{url}'>{title}</a><p>{content}</p></li>")
         html.append("</ul>")
     html.append("</body></html>")
     return "\n".join(html)
