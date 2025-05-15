@@ -5,6 +5,7 @@ import spacy
 from newsapi import NewsApiClient
 from genderize import Genderize
 from openai import OpenAI
+import openai as openai_pkg
 import argparse
 
 # ─── Logging Setup ────────────────────────────────────────────────────
@@ -37,43 +38,55 @@ def load_config(path: str = "config.yaml") -> dict:
 def classify_leadership(text: str, cfg: dict, client: OpenAI) -> bool:
     prompt = cfg["prompts"]["classification"] + "\n\n" + text
     logger.debug("Running zero-shot classification for leadership")
-    resp = client.chat.completions.create(
-        model=cfg["openai"]["model"],
-        messages=[{"role": "user", "content": prompt}],
-        temperature=cfg["openai"].get("temperature", 0),
-        max_tokens=1
-    )
-    answer = resp.choices[0].message.content.strip().lower()
-    logger.debug(f"Classification result: {answer}")
-    return answer == "yes"
+    try:
+        resp = client.chat.completions.create(
+            model=cfg["openai"]["model"],
+            messages=[{"role": "user", "content": prompt}],
+            temperature=cfg["openai"].get("temperature", 0),
+            max_tokens=1
+        )
+        answer = resp.choices[0].message.content.strip().lower()
+        logger.debug(f"Classification result: {answer}")
+        return answer == "yes"
+    except openai_pkg.error.OpenAIError as e:
+        logger.warning(f"OpenAI classification error: {e}")
+        return False
 
 
 def summarize(text: str, cfg: dict, client: OpenAI) -> str:
     prompt = cfg["prompts"]["summarize"].format(text=text)
     logger.debug("Requesting summary from OpenAI")
-    resp = client.chat.completions.create(
-        model=cfg["openai"]["model"],
-        messages=[{"role": "user", "content": prompt}],
-        temperature=cfg["openai"].get("temperature", 0),
-        max_tokens=60
-    )
-    summary = resp.choices[0].message.content.strip()
-    logger.info("Received summary")
-    return summary
+    try:
+        resp = client.chat.completions.create(
+            model=cfg["openai"]["model"],
+            messages=[{"role": "user", "content": prompt}],
+            temperature=cfg["openai"].get("temperature", 0),
+            max_tokens=60
+        )
+        summary = resp.choices[0].message.content.strip()
+        logger.info("Received summary")
+        return summary
+    except openai_pkg.error.OpenAIError as e:
+        logger.warning(f"OpenAI summarization error: {e}")
+        return text  # fallback to original text
 
 
 def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
     prompt = cfg["prompts"]["spin_genders"].format(text=text)
     logger.debug("Requesting spin-genders rewrite from OpenAI")
-    resp = client.chat.completions.create(
-        model=cfg["openai"]["model"],
-        messages=[{"role": "user", "content": prompt}],
-        temperature=cfg["openai"].get("temperature", 0),
-        max_tokens=200
-    )
-    rewrite = resp.choices[0].message.content.strip()
-    logger.info("Received spin-genders rewrite")
-    return rewrite
+    try:
+        resp = client.chat.completions.create(
+            model=cfg["openai"]["model"],
+            messages=[{"role": "user", "content": prompt}],
+            temperature=cfg["openai"].get("temperature", 0),
+            max_tokens=200
+        )
+        rewrite = resp.choices[0].message.content.strip()
+        logger.info("Received spin-genders rewrite")
+        return rewrite
+    except openai_pkg.error.OpenAIError as e:
+        logger.warning(f"OpenAI spin-genders error: {e}")
+        return text  # fallback to original text
 
 # ─── Fetch & Filter ────────────────────────────────────────────────────
 
