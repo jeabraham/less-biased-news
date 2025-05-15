@@ -9,3 +9,6 @@ beautifulsoup4
 requests
 lxml
 gender-guesser
+deepface
+opencv-python-headless
+tf-keras

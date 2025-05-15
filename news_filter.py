@@ -8,7 +8,9 @@ from openai import OpenAI
 import openai as openai_pkg
 import argparse
 import requests
-from article_fetcher import fetch_full_text
+from article_fetcher import fetch_full_text_and_image
+from typing import List, Tuple, Set
+from analyze_image_gender import analyze_image_gender
 
 # ─── Logging Setup ────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -109,7 +111,26 @@ def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
 
 from datetime import date, timedelta
 
-def fetch_mediastack(cfg: dict, qcfg: dict) -> list:
+import json
+
+def fetch_mediastack(qcfg: dict, cfg: dict, use_cache: bool = False, cache_dir: str = "cache") -> list:
+    """
+    Fetch articles from Mediastack, or if use_cache=True and a cached file exists,
+    load from disk instead of hitting the API.  Always saves live results to cache.
+    """
+    # ensure cache directory
+    os.makedirs(cache_dir, exist_ok=True)
+    # derive a safe filename from the query name
+    safe_name = "".join(c if c.isalnum() or c in (" ", "_", "-") else "_" for c in cfg["name"])
+    cache_file = os.path.join(cache_dir, f"{safe_name}.json")
+
+    # 1) Try loading from cache
+    if use_cache and os.path.exists(cache_file):
+        logger.info(f"Loading Mediastack results for '{qcfg['name']}' from cache")
+        with open(cache_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+
     base_url = cfg["mediastack"].get("base_url")
     raw_kw = qcfg.get("q")
     keywords = ",".join(raw_kw) if isinstance(raw_kw,list) else (raw_kw or "")
@@ -135,6 +156,12 @@ def fetch_mediastack(cfg: dict, qcfg: dict) -> list:
         if not articles:
             logger.error(f"Mediastack returned zero articles with params: {params}")
         else:
+            try:
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(articles, f, indent=2, ensure_ascii=False)
+                logger.info(f"Cached {len(articles)} items to {cache_file}")
+            except Exception as e:
+                logger.warning(f"Failed to write cache file {cache_file}: {e}")
             logger.info(f"Fetched {len(articles)} articles from Mediastack")
         return articles
     except Exception as e:
@@ -143,7 +170,7 @@ def fetch_mediastack(cfg: dict, qcfg: dict) -> list:
 
 # ─── Fetch & Filter ────────────────────────────────────────────────────
 
-def fetch_and_filter(cfg: dict) -> dict:
+def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
     logger.info("Initializing NewsAPI client")
     newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
     logger.info("Loading spaCy model")
@@ -159,7 +186,7 @@ def fetch_and_filter(cfg: dict) -> dict:
         provider = qcfg.get("provider", "newsapi").lower()
         if provider == "mediastack":
           # returns list of { title, url, description, etc. }
-          raw_articles = fetch_mediastack(cfg, qcfg)
+          raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
           logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
         else:
           resp = newsapi.get_everything(
@@ -171,39 +198,35 @@ def fetch_and_filter(cfg: dict) -> dict:
           logger.info(f"Fetched {len(raw_articles)} articles from NewsAPI")
 
         # 1) Extract all person names across all articles
-        all_persons = set()
-        bodies = []
-        get_bodies_and_person_names(all_persons, bodies, nlp, raw_articles)
+        bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp)
 
         logger.debug(f"Batch Genderize request names ({len(all_persons)}): {all_persons}")
-
         # 2) One shot gender detection
-        try:
-            gender_responses = gndr.get(list(all_persons))
-            gender_map = {g["name"]: g.get("gender") for g in gender_responses}
-            logger.debug(f"Genderize API response: {gender_map}")
-        except GenderizeException as e:
-            logger.warning(f"Genderize API error (falling back): {e}")
-            if LOCAL_GENDER_AVAILABLE:
-                logger.info("Using local gender-guesser fallback")
-                gender_map = {}
-                for name in all_persons:
-                    first = name.split()[0]
-                    g = local_detector.get_gender(first)
-                    gender_map[name] = "female" if g in ("female","mostly_female") else None
-                logger.debug(f"Local gender-map: {gender_map}")
-            else:
-                logger.error(
-                    "Local gender-guesser not installed; all names will be treated as unknown"
-                )
-                gender_map = {}
+        gender_map = guess_genders(all_persons, gndr)
 
         hits = []
         stats = {"total": len(raw_articles), "persons": 0, "female_names": 0,
                  "keyword_hits": 0, "classified_ok": 0}
 
         # 3) Process each article
-        for art, body in zip(raw_articles, bodies):
+        for art, body, image_url in zip(raw_articles, bodies, images):
+            # 1) attach the raw image URL
+            art["image_url"] = image_url
+
+            # 2) run face-gender analysis and possibly drop/mark the image
+            faces = analyze_image_gender(image_url)
+            if faces:
+                best = max(faces, key=lambda f: f["prominence"])
+                if best["gender"].lower() == "woman":
+                    art["image_status"] = "female"
+                    art["image_prominence"] = best["prominence"]
+                else:
+                    # predominantly male face → remove image
+                    art["image_url"] = ""
+                    art["image_status"] = "dropped_male"
+            else:
+                art["image_status"] = "no_face"
+
             doc = nlp(body)
             persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
             stats["persons"] += bool(persons)
@@ -267,14 +290,70 @@ def fetch_and_filter(cfg: dict) -> dict:
     return results
 
 
-def get_bodies_and_person_names(all_persons, bodies, nlp, raw_articles):
+def guess_genders(all_persons, gndr):
+    try:
+        gender_responses = gndr.get(list(all_persons))
+        gender_map = {g["name"]: g.get("gender") for g in gender_responses}
+        logger.debug(f"Genderize API response: {gender_map}")
+    except GenderizeException as e:
+        logger.warning(f"Genderize API error (falling back): {e}")
+        if LOCAL_GENDER_AVAILABLE:
+            logger.info("Using local gender-guesser fallback")
+            gender_map = {}
+            for name in all_persons:
+                first = name.split()[0]
+                g = local_detector.get_gender(first)
+                gender_map[name] = "female" if g in ("female", "mostly_female") else None
+            logger.debug(f"Local gender-map: {gender_map}")
+        else:
+            logger.error(
+                "Local gender-guesser not installed; all names will be treated as unknown"
+            )
+            gender_map = {}
+    return gender_map
+
+
+def gather_bodies_images_and_persons(
+    raw_articles: List[dict],
+    nlp,
+) -> Tuple[List[str], List[str], Set[str]]:
+    """
+    For each article in raw_articles:
+      - fetch its full text and lead image (fetch_full_text_and_image)
+      - fall back to title/description if no text
+      - extract PERSON entities via spaCy
+
+    Returns:
+      bodies:   [ body1, body2, … ]
+      images:   [ image_url1, image_url2, … ]
+      persons:  { all detected PERSON names across all bodies }
+    """
+    bodies: List[str] = []
+    images: List[str] = []
+    persons: Set[str] = set()
+
     for art in raw_articles:
-        body = fetch_full_text(art["url"]) or " ".join(filter(None, [art.get("title"), art.get("content")]))
+        url = art.get("url", "")
+        # 1) fetch text + image in one call
+        body, image_url = fetch_full_text_and_image(url)
+
+        # 2) fallback if extraction failed
+        if not body:
+            body = " ".join(filter(None, [
+                art.get("title", ""),
+                art.get("description", "")
+            ]))
+
         bodies.append(body)
+        images.append(image_url or "")
+
+        # 3) collect PERSON entities
         doc = nlp(body)
         for ent in doc.ents:
             if ent.label_ == "PERSON":
-                all_persons.add(ent.text)
+                persons.add(ent.text)
+
+    return bodies, images, persons
 
 
 # ─── Formatting ─────────────────────────────────────────────────────────
@@ -324,6 +403,20 @@ def generate_html(results: dict) -> str:
             html.append("      <li>")
             html.append(f"        [{status}] <a href='{url}' target='_blank'>{title}</a>")
 
+            if art.get("image_url"):
+                # choose size based on prominence
+                prom = art.get("image_prominence", 0)
+                if art["image_status"] == "female" and prom > 0.2:
+                    size = "max-width:500px;"
+                else:
+                    size = "max-width:300px;"
+                html.append(
+                    f"<figure>"
+                    f"  <img src='{art['image_url']}' alt='' "
+                    f"style='{size}display:block;margin:0.5em 0;'>"
+                    f"</figure>"
+                )
+
             # split on double newlines first, then single newlines
             paragraphs = []
             for block in content.split("\n\n"):
@@ -348,10 +441,10 @@ def generate_html(results: dict) -> str:
 
 # ─── Main Entrypoint ───────────────────────────────────────────────────
 
-def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:str="INFO"):
+def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:str="INFO",use_cache:bool=False):
     setup_logging(log_level)
     cfg=load_config(config_path)
-    res=fetch_and_filter(cfg)
+    res=fetch_and_filter(cfg, use_cache)
     out=generate_html(res) if fmt=="html" else format_text(res)
     if output is None: output="news.html" if fmt=="html" else "news.txt"
     if output.lower()=="console": print(out)
@@ -365,4 +458,10 @@ if __name__=="__main__":
     p.add_argument("-o","--output",help="Console or filepath")
     p.add_argument("-f","--format",choices=["text","html"],default="text")
     p.add_argument("-l","--log",default="INFO")
-    a=p.parse_args(); main(a.config,a.output,a.format,a.log)
+    p.add_argument(
+        "--use-cache", "-C",
+        action="store_true",
+        help="If set, load Mediastack queries from cache/<query_name>.json instead of calling API"
+    )
+    a=p.parse_args();
+    main(config_path=a.config,output=a.output,fmt=a.format,log_level=a.log,use_cache=a.use_cache)
