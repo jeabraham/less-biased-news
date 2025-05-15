@@ -1,0 +1,5 @@
+PyYAML
+spacy
+newsapi-python
+genderize
+openai
