@@ -1,0 +1,100 @@
+# Global API settings
+newsapi:
+  api_key: "your_newsapi_key"
+  language: "en"
+
+mediastack:
+  access_key: "your_mediastack_access_key"
+  base_url: "http://api.mediastack.com/v1/news"
+
+openai:
+  api_key: "your_openai_key"
+  model: "gpt-3.5-turbo"
+  temperature: 0
+
+# Prompts for OpenAI
+prompts:
+  classification: >-
+    Does this article include a woman in a genuine leadership role?
+    Answer “yes” or “no” only.
+  summarize: >-
+    Summarize the following article snippet in two sentences:
+    {text}
+  spin_genders: >-
+    Can you write the following article snippet a little differently, expanding the roles
+    of any women mentioned in the article, and if they are a public figure add a little bit of background on them 
+    based on common knowledge?  Similarly, if a man is mentioned, even if a masculine name appears, you should
+    see if his name is important to the article, and if not you could remove it. You could also diminish his role, and
+    remove any pronouns that identify his gender. 
+    
+    The idea is not to change the meaning of the article, but rather to ensure that the women are mentioned 
+    by name, with a little more background, with feminine pronouns, while men are stripped of any gender pronouns,
+    and if their name
+    is masculine and not an important detail, we can remove his name.  We aren't changing the news, just writing it
+    with a little bit of a feminist spin.  It's also ok to not change the article at all, if it already seems
+    to have a feminist spin. 
+    
+    Here is the article snippet:
+    {text}
+
+genderize:
+  api_url: "https://api.genderize.io"
+
+leadership_keywords:
+  - CEO
+  - president
+  - minister
+  - chair
+  - director
+  - founder
+  - co-founder
+  - leader
+  - head
+  - manager
+  - executive
+  - officer
+  - principal
+  - captain
+  - commander
+  - chief
+  - boss
+  - forewoman
+  - foreman
+  - superintendent
+  - overseer
+  - mayor
+  - governor
+  - chancellor
+  - senator
+  - representative
+  - ambassador
+  - diplomat
+  - judge
+  - magistrate
+  - commissioner
+
+# Define as many queries as you like:
+#   - `q`: your NewsAPI query (supports quoted phrases, +/– prefixes, AND/OR/NOT)
+#   - `classification`: whether to apply the female-leadership filter
+#   - `fallback`: what to do with non-female-leadership articles
+#       * show-full: include original
+#       * summarize: replace content with OpenAI summary
+#       * spin-genders: rewrite via OpenAI with female spin
+#       * exclude: drop it
+queries:
+  - name: Calgary
+    provider: newsapi
+    q: "Calgary"
+    page_size: 10
+    classification: false
+    fallback: summarize
+
+  - name: Canada politics
+    provider: mediastack
+    q: "Canada, politics"
+    page_size: 100
+    classification: true
+    fallback: spin-genders  # Options: show-full, summarize, spin-genders, exclude
+
+
+#    countries: ca doesn't work
