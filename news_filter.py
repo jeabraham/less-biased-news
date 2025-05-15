@@ -70,7 +70,7 @@ def summarize(text: str, cfg: dict, client: OpenAI) -> str:
             model=cfg["openai"]["model"],
             messages=[{"role":"user","content":prompt}],
             temperature=cfg["openai"].get("temperature",0),
-            max_tokens=60
+            max_tokens=200
         )
         summary = resp.choices[0].message.content.strip()
         logger.info("Received summary")
@@ -88,7 +88,7 @@ def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
             model=cfg["openai"]["model"],
             messages=[{"role":"user","content":prompt}],
             temperature=cfg["openai"].get("temperature",0),
-            max_tokens=200
+            max_tokens=4000
         )
         rewrite = resp.choices[0].message.content.strip()
         logger.info("Received spin-genders rewrite")
@@ -97,13 +97,24 @@ def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
         logger.warning(f"OpenAI spin-genders error: {e}")
         return text
 
+from datetime import date, timedelta
 
 def fetch_mediastack(cfg: dict, qcfg: dict) -> list:
     base_url = cfg["mediastack"].get("base_url")
     raw_kw = qcfg.get("q")
     keywords = ",".join(raw_kw) if isinstance(raw_kw,list) else (raw_kw or "")
     params = {"access_key":cfg["mediastack"]["access_key"],"limit":qcfg.get("page_size",100)}
+
+    # Determine history_days (per-query override or global default)
+    history = qcfg.get("history_days",
+               cfg["mediastack"].get("default_history_days", None))
+    if history:
+        end = date.today().isoformat()
+        start = (date.today() - timedelta(days=history)).isoformat()
+        params["date"] = f"{start},{end}"
+
     if keywords: params["keywords"] = keywords
+
     if qcfg.get("countries"): params["countries"] = qcfg.get("countries")
     logger.debug(f"Mediastack query params: {params}")
     try:
