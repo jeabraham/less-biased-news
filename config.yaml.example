@@ -29,13 +29,16 @@ prompts:
     
     The idea is not to change the meaning of the article, but rather to ensure that the women are mentioned 
     by name, with a little more background, with feminine pronouns, while men are stripped of any gender pronouns,
-    and if their name
-    is masculine and not an important detail, we can remove his name.  We aren't changing the news, just writing it
+    and if their name     is masculine and not an important detail, we can remove his name.  We aren't changing the news, just writing it
     with a little bit of a feminist spin.  It's also ok to not change the article at all, if it already seems
-    to have a feminist spin. 
+    to have a feminist spin.
+
+    Please do not change the gender of anyone.  If someone is women, you can emphasize them and add more background information.  If someone is man, you can
+    remove their name, or diminish their role, or remove any pronouns that identify their gender.
     
     Here is the article snippet:
-    {text}
+
+        {text}
 
 genderize:
   api_url: "https://api.genderize.io"

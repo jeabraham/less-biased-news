@@ -8,3 +8,4 @@ readability-lxml
 beautifulsoup4
 requests
 lxml
+gender-guesser
