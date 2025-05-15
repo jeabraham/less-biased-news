@@ -134,24 +134,25 @@ def fetch_and_filter(cfg: dict) -> dict:
     for qcfg in cfg["queries"]:
         name = qcfg["name"]
         logger.info(f"Processing query '{name}'")
-        resp = newsapi.get_everything(
-            q=qcfg["q"],
-            language=cfg["newsapi"]["language"],
-            page_size=qcfg["page_size"]
-        )
-        raw_articles = resp.get("articles", [])
-        logger.info(f"Fetched {len(raw_articles)} articles for '{name}'")
+        # ─── fetch raw articles via the right source ────────────────
+        provider = qcfg.get("provider", "newsapi").lower()
+        if provider == "mediastack":
+          # returns list of { title, url, description, etc. }
+          raw_articles = fetch_mediastack(cfg, qcfg)
+          logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
+        else:
+          resp = newsapi.get_everything(
+              q = qcfg["q"],
+              language = cfg["newsapi"]["language"],
+              page_size = qcfg["page_size"]
+              )
+          raw_articles = resp.get("articles", [])
+          logger.info(f"Fetched {len(raw_articles)} articles from NewsAPI")
 
         # 1) Extract all person names across all articles
         all_persons = set()
         bodies = []
-        for art in raw_articles:
-            body = fetch_full_text(art["url"]) or " ".join(filter(None, [art.get("title"), art.get("content")]))
-            bodies.append(body)
-            doc = nlp(body)
-            for ent in doc.ents:
-                if ent.label_ == "PERSON":
-                    all_persons.add(ent.text)
+        get_bodies_and_person_names(all_persons, bodies, nlp, raw_articles)
 
         logger.debug(f"Batch Genderize request names ({len(all_persons)}): {all_persons}")
 
@@ -212,6 +213,15 @@ def fetch_and_filter(cfg: dict) -> dict:
                 # and you can log rejection reasons here
 
             art["status"] = status
+            if status in ("female_leader", "show-full"):
+                  # keep the full fetched body
+                  art["content"] = body
+            elif status == "summarize":
+                  art["content"] = summarize(body, cfg, openai_client)
+            elif status == "spin-genders":
+                  art["content"] = spin_genders(body, cfg, openai_client)
+            else:
+                  art["content"] = art.get("description", "")
             hits.append(art)
 
         logger.info(
@@ -224,6 +234,17 @@ def fetch_and_filter(cfg: dict) -> dict:
 
     return results
 
+
+def get_bodies_and_person_names(all_persons, bodies, nlp, raw_articles):
+    for art in raw_articles:
+        body = fetch_full_text(art["url"]) or " ".join(filter(None, [art.get("title"), art.get("content")]))
+        bodies.append(body)
+        doc = nlp(body)
+        for ent in doc.ents:
+            if ent.label_ == "PERSON":
+                all_persons.add(ent.text)
+
+
 # ─── Formatting ─────────────────────────────────────────────────────────
 
 def format_text(results: dict)->str:
@@ -231,19 +252,57 @@ def format_text(results: dict)->str:
     for name,arts in results.items():
         lines.append(f"=== {name} ===")
         for art in arts:
+            content = art.get("content", art.get("description", ""))
+            lines.append(f"- {title}  [{art.get('status', '')}]")
+            lines.append(f"  {url}")
+            lines.append(f"  {content}\n")
             st=art.get("status","original")
-            lines.append(f"- [{st}] {art.get('title','No title')}\n  {art.get('url','')}\n  {art.get('snippet',art.get('full_text',''))}\n")
     return "\n".join(lines)
 
-def generate_html(results: dict)->str:
-    html=["<html><head><meta charset='utf-8'><title>News</title></head><body>"]
-    for name,arts in results.items():
-        html.append(f"<h2>{name}</h2><ul>")
-        for art in arts:
-            st=art.get("status","original")
-            html.append(f"<li><strong>[{st}]</strong> <a href='{art.get('url','#')}'>{art.get('title','No title')}</a><p>{art.get('snippet',art.get('full_text',''))}</p></li>")
-        html.append("</ul>")
-    html.append("</body></html>")
+
+def generate_html(results: dict) -> str:
+    """
+    Generate an HTML page from the filtered news results.
+
+    Each query name becomes a <h2> header, and each article is an <li>
+    including its status tag, link, and content.
+    """
+    logger.debug("Generating HTML output")
+
+    html = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "  <head>",
+        "    <meta charset='utf-8'>",
+        "    <title>News</title>",
+        "  </head>",
+        "  <body>"
+    ]
+
+    for query_name, articles in results.items():
+        html.append(f"    <h2>{query_name}</h2>")
+        html.append("    <ul>")
+
+        for art in articles:
+            title = art.get("title", "No title")
+            url = art.get("url", "#")
+            status = art.get("status", "")
+            content = art.get("content", art.get("description", ""))
+
+            html.append(
+                "      <li>"
+                f"[{status}] <a href='{url}' target='_blank'>{title}</a>"
+                f"<p>{content}</p>"
+                "</li>"
+            )
+
+        html.append("    </ul>")
+
+    html.extend([
+        "  </body>",
+        "</html>"
+    ])
+
     return "\n".join(html)
 
 # ─── Main Entrypoint ───────────────────────────────────────────────────
