@@ -7,6 +7,7 @@ from genderize import Genderize
 from openai import OpenAI
 import openai as openai_pkg
 import argparse
+from article_fetcher import fetch_full_text
 
 # ─── Logging Setup ────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -22,7 +23,6 @@ def setup_logging(level: str = "INFO"):
     logger.debug(f"Logging initialized at {level} level")
 
 # ─── Config Loading ────────────────────────────────────────────────────
-
 def load_config(path: str = "config.yaml") -> dict:
     logger.debug(f"Loading config from {path}")
     if not os.path.exists(path):
@@ -34,7 +34,6 @@ def load_config(path: str = "config.yaml") -> dict:
     return cfg
 
 # ─── OpenAI Helpers ────────────────────────────────────────────────────
-
 def classify_leadership(text: str, cfg: dict, client: OpenAI) -> bool:
     prompt = cfg["prompts"]["classification"] + "\n\n" + text
     logger.debug("Running zero-shot classification for leadership")
@@ -68,7 +67,7 @@ def summarize(text: str, cfg: dict, client: OpenAI) -> str:
         return summary
     except openai_pkg.error.OpenAIError as e:
         logger.warning(f"OpenAI summarization error: {e}")
-        return text  # fallback to original text
+        return text
 
 
 def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
@@ -86,17 +85,15 @@ def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
         return rewrite
     except openai_pkg.error.OpenAIError as e:
         logger.warning(f"OpenAI spin-genders error: {e}")
-        return text  # fallback to original text
+        return text
 
 # ─── Fetch & Filter ────────────────────────────────────────────────────
-
 def fetch_and_filter(cfg: dict) -> dict:
-    logger.info("Initializing NewsAPI client")
+    logger.info("Initializing NewsAPI and OpenAI clients")
     newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
-    logger.info("Initializing OpenAI client")
     client = OpenAI(api_key=cfg["openai"]["api_key"])
 
-    logger.info("Loading spaCy model")
+    logger.info("Loading spaCy model and initializing Genderize")
     nlp = spacy.load("en_core_web_sm")
     gndr = Genderize()
 
@@ -115,42 +112,44 @@ def fetch_and_filter(cfg: dict) -> dict:
             continue
 
         hits = []
-        articles = resp.get("articles", [])
-        logger.debug(f"Fetched {len(articles)} articles for '{name}'")
+        for art in resp.get("articles", []):
+            url = art.get("url", "")
+            full_text = fetch_full_text(url) if qcfg.get("classification", False) else ""
+            base_text = full_text or " ".join(filter(None, [art.get("title"), art.get("description")]))
 
-        for art in articles:
-            title = art.get("title", "")
-            text = " ".join(filter(None, [title, art.get("description")]))
             if not qcfg.get("classification", False):
+                art["full_text"] = full_text
                 hits.append(art)
                 continue
 
-            doc = nlp(text)
+            doc = nlp(base_text)
             people = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
             genders = gndr.get(people) if people else []
             female_names = {g["name"] for g in genders if g.get("gender") == "female"}
             has_keyword = any(
-                kw.lower() in text.lower()
+                kw.lower() in base_text.lower()
                 for kw in cfg.get("leadership_keywords", [])
             )
 
             is_female_leader = False
             if female_names and has_keyword:
-                is_female_leader = classify_leadership(text, cfg, client)
+                is_female_leader = classify_leadership(base_text, cfg, client)
 
             if is_female_leader:
-                logger.debug(f"Kept (female leader): {title}")
+                logger.debug(f"Kept (female leader): {art.get('title')}")
+                art["full_text"] = full_text
                 hits.append(art)
             else:
                 action = qcfg.get("fallback", "exclude")
-                logger.debug(f"Fallback '{action}' for article: {title}")
+                logger.debug(f"Fallback '{action}' for article: {art.get('title')}")
                 if action == "show-full":
+                    art["full_text"] = full_text
                     hits.append(art)
                 elif action == "summarize":
-                    art["snippet"] = summarize(text, cfg, client)
+                    art["snippet"] = summarize(base_text, cfg, client)
                     hits.append(art)
                 elif action == "spin-genders":
-                    art["snippet"] = spin_genders(text, cfg, client)
+                    art["snippet"] = spin_genders(base_text, cfg, client)
                     hits.append(art)
 
         logger.info(f"{len(hits)} articles after filtering for '{name}'")
@@ -159,7 +158,6 @@ def fetch_and_filter(cfg: dict) -> dict:
     return results
 
 # ─── Formatting ─────────────────────────────────────────────────────────
-
 def format_text(results: dict) -> str:
     logger.debug("Formatting text output")
     lines = []
@@ -169,7 +167,8 @@ def format_text(results: dict) -> str:
             title = art.get("title", "No title")
             url = art.get("url", "")
             snippet = art.get("snippet", art.get("description", ""))
-            lines.append(f"- {title}\n  {url}\n  {snippet}\n")
+            text = art.get("full_text", "")
+            lines.append(f"- {title}\n  {url}\n  {snippet or text}\n")
     return "\n".join(lines)
 
 
@@ -182,13 +181,14 @@ def generate_html(results: dict) -> str:
             title = art.get("title", "No title")
             url = art.get("url", "#")
             snippet = art.get("snippet", art.get("description", ""))
-            html.append(f"<li><a href='{url}'>{title}</a><p>{snippet}</p></li>")
+            text = art.get("full_text", "")
+            content = snippet or text
+            html.append(f"<li><a href='{url}'}>{title}</a><p>{content}</p></li>")
         html.append("</ul>")
     html.append("</body></html>")
     return "\n".join(html)
 
 # ─── Main Entrypoint ───────────────────────────────────────────────────
-
 def main(
     config_path: str = "config.yaml",
     output: str = "news.txt",

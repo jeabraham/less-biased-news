@@ -3,3 +3,8 @@ spacy
 newsapi-python
 genderize
 openai
+newspaper3k
+readability-lxml
+beautifulsoup4
+requests
+lxml
