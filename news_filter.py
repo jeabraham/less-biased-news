@@ -201,7 +201,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
           raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
           logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
         else:
-            raw_articles = fetch_newsapi(cfg, name, qcfg)
+            raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
 
         # 1) Extract all person names across all articles
         bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp)
@@ -301,7 +301,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
     return results
 
 
-def fetch_newsapi(cfg, name, qcfg):
+def fetch_newsapi(cfg, name, qcfg, newsapi):
     desired = qcfg.get("page_size", 100)
     per_page = min(desired, 100)
     pages = math.ceil(desired / per_page)
