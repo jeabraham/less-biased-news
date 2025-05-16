@@ -4,13 +4,18 @@ import logging
 import spacy
 from newsapi import NewsApiClient
 from genderize import Genderize, GenderizeException
-from openai import OpenAI
 import openai as openai_pkg
 import argparse
 import requests
 from article_fetcher import fetch_full_text_and_image
 from typing import List, Tuple, Set
 from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
+
+import tiktoken
+
+
+# Approximate a character→token ratio if tiktoken not available:
+APPROX_CHARS_PER_TOKEN = 4
 
 # ─── Logging Setup ────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -46,68 +51,126 @@ def load_config(path: str = "config.yaml") -> dict:
 
 # ─── OpenAI & Mediastack Helpers ───────────────────────────────────────
 
-def classify_leadership(text: str, cfg: dict, client: OpenAI) -> bool:
-    prompt = cfg["prompts"]["classification"] + "\n\n" + text
+# ─── OpenAI Helpers ─────────────────────────────────────────────────
+
+def truncate_for_openai(text: str, completion_tokens: int, chars_per_token: int = 4) -> str:
+    """
+    Naïvely truncate `text` so that its length in characters
+    does not exceed (max_tokens * chars_per_token).
+    """
+    char_limit = completion_tokens * chars_per_token
+    if len(text) > char_limit:
+        logger.warning(
+            f"Input body too long ({len(text)} chars); truncating to {char_limit}"
+        )
+        return text[:char_limit]
+    return text
+
+def classify_leadership(text: str, cfg: dict, client) -> bool:
+    """
+    Zero-shot classification (yes/no) of female leadership.
+    Truncates the input to avoid context overflow.
+    """
+    model      = cfg["openai"]["model"]
+    max_toks   = cfg["openai"]["max_tokens"]  # e.g. 16385
+    temp       = cfg["openai"].get("temperature", 0)
+
+    # 1) truncate raw text to fit
+    safe_text = truncate_for_openai(text, completion_tokens=1)
+
+    # 2) build prompt
+    prompt = cfg["prompts"]["classification"] + "\n\n" + safe_text
     logger.debug("Running zero-shot classification for leadership")
+
+    # 3) call API
     try:
-        resp = client.chat.completions.create(
-            model=cfg["openai"]["model"],
-            messages=[{"role":"user","content":prompt}],
-            temperature=cfg["openai"].get("temperature",0),
-            max_tokens=1
+        resp = client.ChatCompletion.create(
+            model=model,
+            temperature=temp,
+            max_tokens=1,
+            messages=[{"role": "user", "content": prompt}]
         )
         answer = resp.choices[0].message.content.strip().lower()
         logger.debug(f"Classification result: {answer}")
-        return answer == "yes"
-    except openai_pkg.error.OpenAIError as e:
+        return (answer == "yes")
+    except Exception as e:
         logger.warning(f"OpenAI classification error: {e}")
         return False
 
+def summarize(text: str, cfg: dict, client) -> str:
+    """
+    Simple summary (200 tokens) via OpenAI, truncated & fault-tolerant.
+    """
+    model      = cfg["openai"]["model"]
+    max_toks   = 200
+    temp       = cfg["openai"].get("temperature", 0)
 
-def summarize(text: str, cfg: dict, client: OpenAI) -> str:
-    prompt = cfg["prompts"]["summarize"].format(text=text)
+    safe_text = truncate_for_openai(text, completion_tokens=max_toks)
+    prompt    = cfg["prompts"]["summarize"].format(text=safe_text)
     logger.debug("Requesting summary from OpenAI")
+
     try:
-        resp = client.chat.completions.create(
-            model=cfg["openai"]["model"],
-            messages=[{"role":"user","content":prompt}],
-            temperature=cfg["openai"].get("temperature",0),
-            max_tokens=200
+        resp = client.ChatCompletion.create(
+            model=model,
+            temperature=temp,
+            max_tokens=max_toks,
+            messages=[{"role": "user", "content": prompt}]
         )
         summary = resp.choices[0].message.content.strip()
         logger.info("Received summary")
         return summary
-    except openai_pkg.error.OpenAIError as e:
+    except Exception as e:
         logger.warning(f"OpenAI summarization error: {e}")
-        return text
+        return safe_text  # fall back to truncated raw text
 
-def clean_summary(text: str, cfg: dict, client: OpenAI) -> str:
-    prompt = cfg["prompts"]["clean_summary"].format(text=text)
-    resp = client.chat.completions.create(
-        model=cfg["openai"]["model"],
-        temperature=cfg["openai"]["temperature"],
-        max_tokens=4000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return resp.choices[0].message.content.strip()
+def clean_summary(text: str, cfg: dict, client) -> str:
+    """
+    Clean-summary of the article, using max_tokens from config.
+    """
+    model    = cfg["openai"]["model"]
+    max_toks = cfg["openai"]["max_tokens"]
+    temp     = cfg["openai"].get("temperature", 0)
 
+    safe_text = truncate_for_openai(text, completion_tokens=max_toks)
+    prompt    = cfg["prompts"]["clean_summary"].format(text=safe_text)
+    logger.debug("Requesting clean summary from OpenAI")
 
-def spin_genders(text: str, cfg: dict, client: OpenAI) -> str:
-    prompt = cfg["prompts"]["spin_genders"].format(text=text)
-    logger.debug("Requesting spin-genders rewrite from OpenAI")
     try:
-        resp = client.chat.completions.create(
-            model=cfg["openai"]["model"],
-            messages=[{"role":"user","content":prompt}],
-            temperature=cfg["openai"].get("temperature",0),
-            max_tokens=4000
+        resp = client.ChatCompletion.create(
+            model=model,
+            temperature=temp,
+            max_tokens=max_toks,
+            messages=[{"role": "user", "content": prompt}]
         )
-        rewrite = resp.choices[0].message.content.strip()
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"OpenAI clean-summary error: {e}")
+        return safe_text[:1000] + ("…" if len(safe_text) > 1000 else "")
+
+def spin_genders(text: str, cfg: dict, client) -> str:
+    """
+    Rewrite with female-centric spin, using up to 4000 tokens.
+    """
+    model    = cfg["openai"]["model"]
+    max_toks = 4000
+    temp     = cfg["openai"].get("temperature", 0)
+
+    safe_text = truncate_for_openai(text, completion_tokens=max_toks)
+    prompt    = cfg["prompts"]["spin_genders"].format(text=safe_text)
+    logger.debug("Requesting spin-genders rewrite from OpenAI")
+
+    try:
+        resp = client.ChatCompletion.create(
+            model=model,
+            temperature=temp,
+            max_tokens=max_toks,
+            messages=[{"role": "user", "content": prompt}]
+        )
         logger.info("Received spin-genders rewrite")
-        return rewrite
-    except openai_pkg.error.OpenAIError as e:
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
         logger.warning(f"OpenAI spin-genders error: {e}")
-        return text
+        return safe_text
 
 from datetime import date, timedelta
 
@@ -169,6 +232,7 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
         return []
 
 # ─── Fetch & Filter ────────────────────────────────────────────────────
+import math
 
 def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
     logger.info("Initializing NewsAPI client")
@@ -176,7 +240,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
     logger.info("Loading spaCy model")
     nlp = spacy.load("en_core_web_sm")
     gndr = Genderize()
-    openai_client = OpenAI(api_key=cfg["openai"]["api_key"])
+    openai_pkg.api_key = cfg["openai"]["api_key"]
 
     results = {}
     for qcfg in cfg["queries"]:
@@ -189,13 +253,22 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
           raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
           logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
         else:
-          resp = newsapi.get_everything(
-              q = qcfg["q"],
-              language = cfg["newsapi"]["language"],
-              page_size = qcfg["page_size"]
-              )
-          raw_articles = resp.get("articles", [])
-          logger.info(f"Fetched {len(raw_articles)} articles from NewsAPI")
+            desired = qcfg.get("page_size", 100)
+            per_page = min(desired, 100)
+            pages = math.ceil(desired / per_page)
+            raw_articles = []
+            for page in range(1, pages + 1):
+                logger.info(f"[{name}] NewsAPI fetch page {page}/{pages}")
+                resp = newsapi.get_everything(
+                    q=qcfg["q"],
+                    language=cfg["newsapi"]["language"],
+                    page_size=per_page,
+                    page=page
+                )
+                batch = resp.get("articles", [])
+                logger.debug(f"[{name}]  → got {len(batch)} articles")
+                raw_articles.extend(batch)
+            logger.info(f"[{name}] Total fetched: {len(raw_articles)} articles")
 
         # 1) Extract all person names across all articles
         bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp)
@@ -260,14 +333,22 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                 else:
                    # keep the full fetched body
                    art["content"] = body
-            elif status == "show-full":
-                art["content"] = body
-            elif status == "summarize":
-                  art["content"] = summarize(body, cfg, openai_client)
-            elif status == "spin-genders":
-                  art["content"] = spin_genders(body, cfg, openai_client)
             else:
-                  art["content"] = art.get("description", "")
+                img_stat = art.get("image_status", "")
+
+                art["status"] = qcfg.get("fallback_image_male", qcfg["fallback"])
+
+                if img_stat in ("female", "female_majority", "female_prominent"):
+                    art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
+                    logger.info(f"Applying image‐based fallback '{art["status"]}' for article '{art['title']}'")
+                if art["status"] == "show-full":
+                    art["content"] = body
+                elif art["status"] == "summarize":
+                      art["content"] = summarize(body, cfg, openai_client)
+                elif art["status"]  == "spin-genders":
+                      art["content"] = spin_genders(body, cfg, openai_client)
+                else:
+                      art["content"] = art.get("description", "")
             hits.append(art)
 
         logger.info(
@@ -417,7 +498,7 @@ def generate_html(results: dict) -> str:
             title = art.get("title", "No title")
             url = art.get("url", "#")
             status = art.get("status", "")
-            content = art.get("content", art.get("description", ""))
+            content = art.get("content") or art.get("description") or ""
 
             html.append("      <li>")
             html.append(f"        [{status}] <a href='{url}' target='_blank'>{title}</a>")

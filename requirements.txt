@@ -2,7 +2,7 @@ PyYAML
 spacy
 newsapi-python
 genderize
-openai
+openai<0.29.0
 newspaper3k
 readability-lxml
 beautifulsoup4
@@ -12,3 +12,4 @@ gender-guesser
 deepface
 opencv-python-headless
 facenet-pytorch
+tiktoken
