@@ -71,12 +71,13 @@ def classify_leadership(text: str, cfg: dict, client) -> bool:
     Zero-shot classification (yes/no) of female leadership.
     Truncates the input to avoid context overflow.
     """
+    toks = 1
     model      = cfg["openai"]["model"]
     max_toks   = cfg["openai"]["max_tokens"]  # e.g. 16385
     temp       = cfg["openai"].get("temperature", 0)
 
     # 1) truncate raw text to fit
-    safe_text = truncate_for_openai(text, completion_tokens=1)
+    safe_text = truncate_for_openai(text, completion_tokens=max_toks - toks )
 
     # 2) build prompt
     prompt = cfg["prompts"]["classification"] + "\n\n" + safe_text
@@ -87,7 +88,7 @@ def classify_leadership(text: str, cfg: dict, client) -> bool:
         resp = client.ChatCompletion.create(
             model=model,
             temperature=temp,
-            max_tokens=1,
+            max_tokens=toks,
             messages=[{"role": "user", "content": prompt}]
         )
         answer = resp.choices[0].message.content.strip().lower()
@@ -101,11 +102,12 @@ def summarize(text: str, cfg: dict, client) -> str:
     """
     Simple summary (200 tokens) via OpenAI, truncated & fault-tolerant.
     """
+    toks = 200
     model      = cfg["openai"]["model"]
-    max_toks   = 200
+    max_toks   = cfg["openai"]["max_tokens"]  # e.g. 16385
     temp       = cfg["openai"].get("temperature", 0)
 
-    safe_text = truncate_for_openai(text, completion_tokens=max_toks)
+    safe_text = truncate_for_openai(text, completion_tokens=max_toks - toks)
     prompt    = cfg["prompts"]["summarize"].format(text=safe_text)
     logger.debug("Requesting summary from OpenAI")
 
@@ -113,7 +115,7 @@ def summarize(text: str, cfg: dict, client) -> str:
         resp = client.ChatCompletion.create(
             model=model,
             temperature=temp,
-            max_tokens=max_toks,
+            max_tokens=toks,
             messages=[{"role": "user", "content": prompt}]
         )
         summary = resp.choices[0].message.content.strip()
@@ -127,11 +129,12 @@ def clean_summary(text: str, cfg: dict, client) -> str:
     """
     Clean-summary of the article, using max_tokens from config.
     """
+    toks = 4000
     model    = cfg["openai"]["model"]
     max_toks = cfg["openai"]["max_tokens"]
     temp     = cfg["openai"].get("temperature", 0)
 
-    safe_text = truncate_for_openai(text, completion_tokens=max_toks)
+    safe_text = truncate_for_openai(text, completion_tokens=max_toks - toks)
     prompt    = cfg["prompts"]["clean_summary"].format(text=safe_text)
     logger.debug("Requesting clean summary from OpenAI")
 
@@ -139,7 +142,7 @@ def clean_summary(text: str, cfg: dict, client) -> str:
         resp = client.ChatCompletion.create(
             model=model,
             temperature=temp,
-            max_tokens=max_toks,
+            max_tokens=toks,
             messages=[{"role": "user", "content": prompt}]
         )
         return resp.choices[0].message.content.strip()
@@ -151,11 +154,12 @@ def spin_genders(text: str, cfg: dict, client) -> str:
     """
     Rewrite with female-centric spin, using up to 4000 tokens.
     """
+    toks = 4000
     model    = cfg["openai"]["model"]
-    max_toks = 4000
+    max_toks = cfg["openai"]["max_tokens"]
     temp     = cfg["openai"].get("temperature", 0)
 
-    safe_text = truncate_for_openai(text, completion_tokens=max_toks)
+    safe_text = truncate_for_openai(text, completion_tokens=max_toks - toks)
     prompt    = cfg["prompts"]["spin_genders"].format(text=safe_text)
     logger.debug("Requesting spin-genders rewrite from OpenAI")
 
@@ -163,7 +167,7 @@ def spin_genders(text: str, cfg: dict, client) -> str:
         resp = client.ChatCompletion.create(
             model=model,
             temperature=temp,
-            max_tokens=max_toks,
+            max_tokens=toks,
             messages=[{"role": "user", "content": prompt}]
         )
         logger.info("Received spin-genders rewrite")
