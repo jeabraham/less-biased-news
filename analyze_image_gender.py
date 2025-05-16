@@ -17,6 +17,33 @@ MIN_FACE_WIDTH_RATIO       = 0.05
 device = "cuda" if torch.cuda.is_available() else "cpu"
 mtcnn  = MTCNN(keep_all=True, device=device, thresholds=[0.6,0.7,0.7])
 
+import requests
+from requests.exceptions import RequestException
+from urllib.parse import urlparse
+
+def download_image(url: str, timeout: int = 5) -> bytes | None:
+    """
+    Try downloading `url` with a browser-like User-Agent and Referer.
+    Returns the raw bytes on success, or None on any error.
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1 Safari/605.1.15"
+        ),
+        # Some CDNs require a Referer header matching the page that embedded the image:
+        "Referer": f"{urlparse(url).scheme}://{urlparse(url).netloc}/",
+        "Accept": "image/avif,image/webp,image/apng,*/*;q=0.8"
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return resp.content
+    except RequestException as e:
+        logger.warning(f"[ImageGender] Download/Open failed for {url}: {e}")
+        return None
+
+
 def analyze_image_gender(image_url: str):
     """
     Download an image, detect ALL faces with MTCNN,
@@ -28,10 +55,11 @@ def analyze_image_gender(image_url: str):
 
     # 1) Download + load
     try:
-        resp = requests.get(image_url, timeout=5)
-        resp.raise_for_status()
-        img_pil = Image.open(BytesIO(resp.content)).convert("RGB")
-        img_np  = np.array(img_pil)
+        data = download_image(image_url, timeout=5)
+        if not data:
+            return []  # abort face analysis
+        img = Image.open(BytesIO(data)).convert("RGB")
+        img_np  = np.array(img)
         H, W, _ = img_np.shape
         logger.debug(f"[ImageGender] Downloaded image in {time.time()-start:.2f}s")
     except Exception as e:
@@ -41,7 +69,7 @@ def analyze_image_gender(image_url: str):
     # 2) Face detection (fully wrapped)
     t0 = time.time()
     try:
-        boxes, _ = mtcnn.detect(img_pil)
+        boxes, _ = mtcnn.detect(img)
     except Exception as e:
         # This will catch the torch.cat() error or any MTCNN internals
         logger.warning(f"[ImageGender] Face detection error (took {time.time()-t0:.2f}s): {e}")

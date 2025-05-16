@@ -17,7 +17,7 @@ prompts:
   classification: >-
     Does this article include a woman in a genuine leadership role?
     Answer “yes” or “no” only.
-  summarize: >-
+  short_summary: >-
     Summarize the following article snippet in two sentences:
     {text}
   spin_genders: >-
@@ -81,7 +81,7 @@ leadership_keywords:
 #   - `classification`: whether to apply the female-leadership filter
 #   - `fallback`: what to do with non-female-leadership articles
 #       * show-full: include original
-#       * summarize: replace content with OpenAI summary
+#       * short_summary: replace content with OpenAI summary
 #       * spin-genders: rewrite via OpenAI with female spin
 #       * exclude: drop it
 queries:
@@ -90,14 +90,14 @@ queries:
     q: "Calgary"
     page_size: 10
     classification: false
-    fallback: summarize
+    fallback: short_summary
 
   - name: Canada politics
     provider: mediastack
     q: "Canada, politics"
     page_size: 100
     classification: true
-    fallback: spin-genders  # Options: show-full, summarize, spin-genders, exclude
+    fallback: spin-genders  # Options: show-full, short_summary, spin-genders, exclude
 
 
 #    countries: ca doesn't work

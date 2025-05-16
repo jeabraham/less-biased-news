@@ -1,6 +1,6 @@
 # News Filter Module
 
-A Python tool for fetching and filtering news articles through NewsAPI, enriched with NLP and OpenAI classification to surface stories about women in leadership roles. It supports multiple query configurations and flexible fallback behaviors (`show-full`, `summarize`, `spin-genders`, or `exclude`).
+A Python tool for fetching and filtering news articles through NewsAPI, enriched with NLP and OpenAI classification to surface stories about women in leadership roles. It supports multiple query configurations and flexible fallback behaviors (`show-full`, `short_summary`, `spin-genders`, or `exclude`).
 
 ## Prerequisites
 
@@ -70,7 +70,7 @@ queries:
     q: "global news"
     page_size: 100
     classification: true
-    fallback: exclude  # Options: show-full, summarize, spin-genders, exclude
+    fallback: exclude  # Options: show-full, short_summary, spin-genders, exclude
   - name: moose_jaw
     q: '"Moose Jaw, Saskatchewan"'
     page_size: 50
@@ -81,7 +81,7 @@ queries:
 ### Fallback Options
 
 * **show-full**: Include the full original article.
-* **summarize**: Replace the content with a two-sentence summary.
+* **short_summary**: Replace the content with a two-sentence summary.
 * **spin-genders**: Rewrite the article with a female-centric spin, expanding on women’s roles.
 * **exclude**: Drop the article entirely.
 
