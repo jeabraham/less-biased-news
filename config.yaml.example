@@ -6,6 +6,7 @@ newsapi:
 mediastack:
   access_key: "your api key"
   base_url: "http://api.mediastack.com/v1/news"
+  delay: 60
 
 openai:
   api_key: "your api key"

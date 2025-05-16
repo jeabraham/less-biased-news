@@ -10,7 +10,8 @@ import requests
 from article_fetcher import fetch_full_text_and_image
 from typing import List, Tuple, Set
 from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+import time
 import json
 
 import tiktoken
@@ -84,15 +85,49 @@ def load_config(path: str = "config.yaml") -> dict:
     logger.info("Configuration loaded successfully")
     return cfg
 
-# ─── Mediastack Helpers ───────────────────────────────────────
+
+provider_last_call = {}
 
 
+def fetch_pause(provider_name: str, cfg: dict, delay_key: str = "delay"):
+    """
+    Ensures sufficient delay between calls to the same provider.
+
+    :param provider_name: Name of the provider (e.g., 'mediastack')
+    :param cfg: Configuration dictionary containing delay information
+    :param delay_key: Key in the configuration to look up the delay (default: "delay")
+    """
+    global provider_last_call
+
+    # Get the delay for the provider or default to 0
+    delay = cfg.get(provider_name, {}).get(delay_key, 0)
+
+    # Get the last call time for the provider
+    last_call = provider_last_call.get(provider_name)
+
+    # If the last call exists and delay time hasn't passed, pause
+    if last_call:
+        elapsed_time = datetime.now() - last_call
+        if elapsed_time < timedelta(seconds=delay):
+            sleep_time = (timedelta(seconds=delay) - elapsed_time).total_seconds()
+            print(f"Pausing for {sleep_time:.2f} seconds before calling {provider_name}")
+            time.sleep(sleep_time)
+
+    # Update the last call time to now
+    provider_last_call[provider_name] = datetime.now()
 
 def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: str = "cache") -> list:
     """
     Fetch articles from Mediastack, or if use_cache=True and a cached file exists,
-    load from disk instead of hitting the API.  Always saves live results to cache.
+    load from disk instead of hitting the API. Always saves live results to cache.
+
+    :param cfg: Configuration dictionary for accessing provider settings
+    :param qcfg: Query-specific configuration dictionary
+    :param use_cache: Whether to load results from cache if available
+    :param cache_dir: Directory to save or read cache files
+    :return: A list of fetched articles
     """
+
     # ensure cache directory
     os.makedirs(cache_dir, exist_ok=True)
     # derive a safe filename from the query name
@@ -105,6 +140,7 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
         with open(cache_file, "r", encoding="utf-8") as f:
             return json.load(f)
 
+    fetch_pause("mediastack", cfg)
 
     base_url = cfg["mediastack"].get("base_url")
     raw_kw = qcfg.get("q")
@@ -165,22 +201,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
           raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
           logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
         else:
-            desired = qcfg.get("page_size", 100)
-            per_page = min(desired, 100)
-            pages = math.ceil(desired / per_page)
-            raw_articles = []
-            for page in range(1, pages + 1):
-                logger.info(f"[{name}] NewsAPI fetch page {page}/{pages}")
-                resp = newsapi.get_everything(
-                    q=qcfg["q"],
-                    language=cfg["newsapi"]["language"],
-                    page_size=per_page,
-                    page=page
-                )
-                batch = resp.get("articles", [])
-                logger.debug(f"[{name}]  → got {len(batch)} articles")
-                raw_articles.extend(batch)
-            logger.info(f"[{name}] Total fetched: {len(raw_articles)} articles")
+            raw_articles = fetch_newsapi(cfg, name, qcfg)
 
         # 1) Extract all person names across all articles
         bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp)
@@ -278,6 +299,27 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
         results[name] = hits
 
     return results
+
+
+def fetch_newsapi(cfg, name, qcfg):
+    desired = qcfg.get("page_size", 100)
+    per_page = min(desired, 100)
+    pages = math.ceil(desired / per_page)
+    raw_articles = []
+    for page in range(1, pages + 1):
+        logger.info(f"[{name}] NewsAPI fetch page {page}/{pages}")
+        fetch_pause("newsapi", cfg)
+        resp = newsapi.get_everything(
+            q=qcfg["q"],
+            language=cfg["newsapi"]["language"],
+            page_size=per_page,
+            page=page
+        )
+        batch = resp.get("articles", [])
+        logger.debug(f"[{name}]  → got {len(batch)} articles")
+        raw_articles.extend(batch)
+    logger.info(f"[{name}] Total fetched: {len(raw_articles)} articles")
+    return raw_articles
 
 
 def female_faces(art, image_url):
