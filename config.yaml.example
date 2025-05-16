@@ -1,41 +1,53 @@
 # Global API settings
 newsapi:
-  api_key: "your_newsapi_key"
+  api_key: "your api key"
   language: "en"
 
 mediastack:
-  access_key: "your_mediastack_access_key"
+  access_key: "your api key"
   base_url: "http://api.mediastack.com/v1/news"
+  delay: 60
 
 openai:
-  api_key: "your_openai_key"
+  api_key: "your api key"
   model: "gpt-3.5-turbo"
+  max_tokens: 16385
   temperature: 0
+
+# Actual max_tokens is 16385 but we're approximating 4 characters per token
 
 # Prompts for OpenAI
 prompts:
   classification: >-
     Does this article include a woman in a genuine leadership role?
     Answer “yes” or “no” only.
-  summarize: >-
+  short_summary: >-
     Summarize the following article snippet in two sentences:
-    {text}
   spin_genders: >-
-    Can you write the following article snippet a little differently, expanding the roles
-    of any women mentioned in the article, and if they are a public figure add a little bit of background on them 
+    Can you write the following article a little differently, expanding the roles
+    of any women mentioned in the article, and if they are a public figure add a little bit of background on them
     based on common knowledge?  Similarly, if a man is mentioned, even if a masculine name appears, you should
-    see if his name is important to the article, and if not you could remove it. You could also diminish his role, and
-    remove any pronouns that identify his gender. 
-    
-    The idea is not to change the meaning of the article, but rather to ensure that the women are mentioned 
+    see if it you can remove his name without sacrificing the overall intent and meaning of the article.
+
+    The idea is not to change the meaning of the article, but rather to ensure that the women are mentioned
     by name, with a little more background, with feminine pronouns, while men are stripped of any gender pronouns,
-    and if their name
-    is masculine and not an important detail, we can remove his name.  We aren't changing the news, just writing it
+    and if their name is masculine and not an important detail, we can remove his name.  We aren't changing the news, just writing it
     with a little bit of a feminist spin.  It's also ok to not change the article at all, if it already seems
-    to have a feminist spin. 
-    
-    Here is the article snippet:
-    {text}
+    to have a feminist spin.
+
+    Please do not change the gender of anyone.  If someone is female, you can emphasize them and add more background information.  If someone is male, you can
+    remove their name, or diminish their role, or remove any pronouns that identify their gender.
+
+    Here is the article :
+
+  clean_summary: >-
+    Cleanly summarize the following article, removing ads, subscription
+    prompts, boilerplate text, and distractions, focusing only on the
+    core narrative and quotes by women leaders:
+
+
+# Global defaults
+default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
 
 genderize:
   api_url: "https://api.genderize.io"
@@ -78,23 +90,45 @@ leadership_keywords:
 #   - `classification`: whether to apply the female-leadership filter
 #   - `fallback`: what to do with non-female-leadership articles
 #       * show-full: include original
-#       * summarize: replace content with OpenAI summary
+#       * short_summary: replace content with OpenAI summary
 #       * spin-genders: rewrite via OpenAI with female spin
 #       * exclude: drop it
 queries:
+
+  - name: Canada Women
+    provider: newsapi
+    q: '"Canada" and ("woman" or "women" or "girl")'
+    page_size: 50
+    history_days: 5       # override default: grab the last 14 days
+    classification: true
+    fallback: exclude  # Options: show-full, short_summary, spin-genders, exclude
+    fallback_image_female: short_summary     # if a woman’s face is prominent
+    summarize_selected: true
+
   - name: Calgary
     provider: newsapi
     q: "Calgary"
     page_size: 10
     classification: false
-    fallback: summarize
+    fallback: short_summary
+    summarize_selected: true
 
   - name: Canada politics
     provider: mediastack
-    q: "Canada, politics"
-    page_size: 100
+    q: "Canada politics"
+    page_size: 60
+    history_days: 5       # override default: grab the last 14 days
     classification: true
-    fallback: spin-genders  # Options: show-full, summarize, spin-genders, exclude
-
-
+    fallback: short_summary  # Options: show-full, short_summary, spin-genders, exclude
+    summarize_selected: true
 #    countries: ca doesn't work
+
+  - name: Global News
+    provider: mediastack
+    q: 'global news'
+    page_size: 100
+    history_days: 5       # override default: grab the last 14 days
+    classification: true
+    fallback: exclude  # Options: show-full, short_summary, spin-genders, exclude
+    fallback_image_female: short_summary     # if a woman’s face is prominent
+    summarize_selected: true
