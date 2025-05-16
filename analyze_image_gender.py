@@ -3,10 +3,11 @@
 import logging, time, requests
 import numpy as np
 from io import BytesIO
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from deepface import DeepFace
 from facenet_pytorch import MTCNN
 import torch
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,31 @@ def download_image(url: str, timeout: int = 5) -> bytes | None:
         logger.warning(f"[ImageGender] Download/Open failed for {url}: {e}")
         return None
 
+def load_image(data: bytes):
+    """
+    Try loading `data` first with PIL, then with OpenCV if PIL fails.
+    Returns a RGB PIL Image on success, or None on failure.
+    """
+    # --- PIL attempt ---
+    try:
+        return Image.open(BytesIO(data)).convert("RGB")
+    except UnidentifiedImageError as e:
+        logger.debug(f"[ImageGender] PIL failed to identify image: {e}")
+    except Exception as e:
+        logger.warning(f"[ImageGender] Unexpected PIL error: {e}")
+
+    # --- OpenCV fallback ---
+    try:
+        arr = np.frombuffer(data, dtype=np.uint8)
+        cv_img = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # BGR
+        if cv_img is None:
+            raise ValueError("cv2.imdecode returned None")
+        # convert BGR → RGB and to PIL
+        rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(rgb)
+    except Exception as e:
+        logger.warning(f"[ImageGender] OpenCV fallback failed: {e}")
+        return None
 
 def analyze_image_gender(image_url: str):
     """
@@ -58,8 +84,11 @@ def analyze_image_gender(image_url: str):
         data = download_image(image_url, timeout=5)
         if not data:
             return []  # abort face analysis
-        img = Image.open(BytesIO(data)).convert("RGB")
-        img_np  = np.array(img)
+        img_pil = load_image(data)
+        if img_pil is None:
+            logger.info(f"[ImageGender] Unable to parse image, skipping: {image_url}")
+            return []
+        img_np  = np.array(img_pil)
         H, W, _ = img_np.shape
         logger.debug(f"[ImageGender] Downloaded image in {time.time()-start:.2f}s")
     except Exception as e:
@@ -69,7 +98,7 @@ def analyze_image_gender(image_url: str):
     # 2) Face detection (fully wrapped)
     t0 = time.time()
     try:
-        boxes, _ = mtcnn.detect(img)
+        boxes, _ = mtcnn.detect(img_pil)
     except Exception as e:
         # This will catch the torch.cat() error or any MTCNN internals
         logger.warning(f"[ImageGender] Face detection error (took {time.time()-t0:.2f}s): {e}")
