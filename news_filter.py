@@ -308,7 +308,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
             is_female_leader = False
             if female_names and has_kw:
                 try:
-                    is_female_leader = classify_leadership(body, cfg, openai_client)
+                    is_female_leader = classify_leadership(body, cfg, openai_pkg)
                 except Exception as e:
                     logger.warning(f"OpenAI classification error on '{art.get('title')}': {e}")
 
@@ -329,7 +329,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                 )
                 if summarize_selected:
                    logger.info(f"Clean-summarizing '{art['title']}'")
-                   art["content"] = clean_summary(body, cfg, openai_client)
+                   art["content"] = clean_summary(body, cfg, openai_pkg)
                 else:
                    # keep the full fetched body
                    art["content"] = body
@@ -344,9 +344,9 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                 if art["status"] == "show-full":
                     art["content"] = body
                 elif art["status"] == "summarize":
-                      art["content"] = summarize(body, cfg, openai_client)
+                      art["content"] = summarize(body, cfg, openai_pkg)
                 elif art["status"]  == "spin-genders":
-                      art["content"] = spin_genders(body, cfg, openai_client)
+                      art["content"] = spin_genders(body, cfg, openai_pkg)
                 else:
                       art["content"] = art.get("description", "")
             hits.append(art)
