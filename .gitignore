@@ -178,3 +178,4 @@ cython_debug/
 /output/
 /cache/
 /config.yaml
+config.yaml
