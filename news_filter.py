@@ -7,7 +7,7 @@ from genderize import Genderize, GenderizeException
 import openai as openai_pkg
 import argparse
 import requests
-from article_fetcher import fetch_full_text_and_image
+from article_fetcher import fetch_full_text_and_images
 from typing import List, Tuple, Set
 from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
 from datetime import date, timedelta, datetime
@@ -190,6 +190,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
     gndr = Genderize()
     openai_pkg.api_key = cfg["openai"]["api_key"]
 
+    max_images = cfg.get("max_images", 3)  # Default to 3 if not specified in the YAML file
+
     results = {}
     for qcfg in cfg["queries"]:
         name = qcfg["name"]
@@ -204,7 +206,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
             raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
 
         # 1) Extract all person names across all articles
-        bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp)
+        bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp, max_images=max_images)
 
         logger.debug(f"Batch Genderize request names ({len(all_persons)}): {all_persons}")
         # 2) One shot gender detection
@@ -220,19 +222,29 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
         )
 
         # 3) Process each article
-        for art, body, image_url in zip(raw_articles, bodies, images):
-            # 1) attach the raw image URL
-            art["image_url"] = image_url
+        for art, body, image_list in zip(raw_articles, bodies, images):
+            # 1) Attach the raw image URLs (list of images for each article)
+            art["image_urls"] = image_list  # Updated to store a list of image URLs instead of a single URL
+            art["image_statuses"] = []  # Track status for each image in the list
 
-            #Set the default status for the image
+            # Set the default status for the article
             art["image_status"] = "not_a_female_story"
 
-            female_faces(art, image_url)
+            # 2) Analyze each image to determine its status using female_faces
+            for image_url in image_list:
+                image_status = female_faces(art, image_url)  # Call female_faces on each image
+                art["image_statuses"].append(image_status)  # Store the status for each image
 
+                # Update the article-level image status based on the detected statuses
+                if image_status in ("female", "female_majority", "female_prominent"):
+                    art["image_status"] = image_status
+
+            # 3) Continue processing with spaCy to extract PERSON entities
             doc = nlp(body)
             persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-            stats["persons"] += bool(persons)
+            stats["persons"] += bool(persons)  # Increment PERSON counter if any entities are found
 
+            # 4) Analyze detected PERSON names for female associations
             female_names = [p for p in persons if gender_map.get(p) == "female"]
             has_kw = any(
                 kw.lower() in body.lower()
@@ -243,6 +255,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
             if has_kw:
                 stats["keyword_hits"] += 1
 
+            # 5) Check if the article pertains to a female leader
             is_female_leader = False
             if female_names and has_kw:
                 try:
@@ -251,44 +264,51 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                 except Exception as e:
                     logger.warning(f"OpenAI classification error on '{art.get('title')}': {e}")
 
+            # 6) Update article status based on classification and image-based fallback logic
             if is_female_leader:
                 status = "female_leader"
                 stats["classified_ok"] += 1
             else:
                 status = qcfg["fallback"]
-                # existing fallback logic (show-full, short_summary, spin-genders, exclude)
-                # and you can log rejection reasons here
+                # Existing fallback logic (show-full, short_summary, spin-genders, exclude)
+                # You can log rejection reasons here
 
             art["status"] = status
             if status == "female_leader":
-                # if this is a female_leader and we want a clean summary…
-
+                # If the article is classified as about a female leader, handle content summarization
                 if summarize_selected:
-                   logger.info(f"Clean-summarizing '{art['title']}'")
-                   art["content"] = clean_summary(body, cfg, openai_pkg)
+                    logger.info(f"Clean-summarizing '{art['title']}'")
+                    art["content"] = clean_summary(body, cfg, openai_pkg)
                 else:
-                   # keep the full fetched body
-                   art["content"] = body
+                    # Keep the full fetched body
+                    art["content"] = body
             else:
+                # Handle fallback logic for image statuses
                 img_stat = art.get("image_status", "")
 
                 art["status"] = qcfg.get("fallback_image_male", qcfg["fallback"])
 
                 if img_stat in ("female", "female_majority", "female_prominent"):
                     art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
-                    logger.info(f"Applying image‐based fallback '{art["status"]}' for article '{art['title']}'")
+                    logger.info(f"Applying image‐based fallback '{art['status']}' for article '{art['title']}'")
                 if art["status"] == "show-full":
+                    # Summarize if necessary, or keep the full content
                     if summarize_selected:
                         logger.info(f"Clean-summarizing '{art['title']}'")
                         art["content"] = clean_summary(body, cfg, openai_pkg)
                     else:
                         art["content"] = body
                 elif art["status"] == "short_summary":
-                      art["content"] = short_summary(body, cfg, openai_pkg)
-                elif art["status"]  == "spin-genders":
-                      art["content"] = spin_genders(body, cfg, openai_pkg)
+                    # Generate a short summary
+                    art["content"] = short_summary(body, cfg, openai_pkg)
+                elif art["status"] == "spin-genders":
+                    # Apply gender-spin logic
+                    art["content"] = spin_genders(body, cfg, openai_pkg)
                 else:
-                      art["content"] = art.get("description", "")
+                    # Default to the article's description
+                    art["content"] = art.get("description", "")
+
+            # Add the processed article to the results hits
             hits.append(art)
 
         logger.info(
@@ -378,47 +398,56 @@ def guess_genders(all_persons, gndr):
 
 
 def gather_bodies_images_and_persons(
-    raw_articles: List[dict],
-    nlp,
-) -> Tuple[List[str], List[str], Set[str]]:
+        raw_articles: list[dict],
+        nlp,
+        max_images: int = 3
+) -> tuple[list[str], list[list[str]], set[str]]:
     """
     For each article in raw_articles:
-      - fetch its full text and lead image (fetch_full_text_and_image)
+      - fetch its full text and images (fetch_full_text_and_images)
       - fall back to title/description if no text
       - extract PERSON entities via spaCy
 
+    Args:
+        raw_articles: A list of dictionaries containing article metadata (e.g., URLs, titles, descriptions).
+        nlp: The spaCy NLP pipeline to process extracted text for entities.
+        max_images: The maximum number of image URLs to retrieve per article.
+
     Returns:
-      bodies:   [ body1, body2, … ]
-      images:   [ image_url1, image_url2, … ]
-      persons:  { all detected PERSON names across all bodies }
+        A tuple containing:
+          - bodies: A list of article text bodies.
+          - images: A list of lists of image URLs (per article).
+          - persons: A set of all PERSON entities detected across all articles.
     """
-    bodies: List[str] = []
-    images: List[str] = []
-    persons: Set[str] = set()
+    # Explicit type hints for local variables
+    bodies: list[str] = []  # List of article text bodies
+    images: list[list[str]] = []  # List of lists of image URLs (per article)
+    persons: set[str] = set()  # Set of PERSON entities
 
     for art in raw_articles:
         url = art.get("url", "")
-        # 1) fetch text + image in one call
-        body, image_url = fetch_full_text_and_image(url)
 
-        # 2) fallback if extraction failed
+        # 1) Fetch text + multiple images using the helper function
+        body, image_urls = fetch_full_text_and_images(url, max_images=max_images)
+
+        # 2) Fallback if text extraction failed
         if not body:
             body = " ".join(filter(None, [
                 art.get("title", ""),
                 art.get("description", "")
             ]))
 
+        # Append the body and the list of image URLs
         bodies.append(body)
-        images.append(image_url or "")
+        images.append(image_urls if image_urls else [])  # Add an empty list if no images found
 
-        # 3) collect PERSON entities
+        # 3) Extract PERSON entities from the text using spaCy NLP
         doc = nlp(body)
         for ent in doc.ents:
             if ent.label_ == "PERSON":
                 persons.add(ent.text)
 
     return bodies, images, persons
-
 
 # ─── Formatting ─────────────────────────────────────────────────────────
 
@@ -440,7 +469,7 @@ def generate_html(results: dict) -> str:
     Generate an HTML page from the filtered news results.
 
     Each query name becomes a <h2> header, and each article is an <li>
-    including its status tag, link, and content.
+    including its status tag, link, content, and the most relevant image.
     """
     logger.debug("Generating HTML output")
 
@@ -464,23 +493,27 @@ def generate_html(results: dict) -> str:
             title = art.get("title", "No title")
             url = art.get("url", "#")
             status = art.get("status", "")
-            if art.get("leader_name"): status.append(f" ({art['leader_name']})")
+            if art.get("leader_name"):
+                status += f" ({art['leader_name']})"  # Append leader name to status
             content = art.get("content") or art.get("description") or ""
 
             html.append("      <li>")
             html.append(f"        [{status}] <a href='{url}' target='_blank'>{title}</a>")
 
-            if art.get("image_url"):
-                image_status = art.get("image_status", "")
-                # 1) Determine base size by detected face
+            # Include the most relevant image if available
+            if art.get("most_relevant_image"):
+                image_url = art["most_relevant_image"]
+                image_status = art.get("most_relevant_status", "")
+
+                # 1) Determine image size based on its status
                 if image_status in ("female", "female_majority", "female_prominent"):
                     base = 300
                 elif image_status == "no_face":
                     base = 200
-                else:  # male or dropped images
+                else:  # male or less relevant images
                     base = 100
 
-                # 2) Double when this is a female_leader
+                # 2) Double the size if the article is about a female leader
                 if art.get("status") == "female_leader":
                     final = base * 2
                 else:
@@ -489,12 +522,12 @@ def generate_html(results: dict) -> str:
                 size_style = f"max-width:{final}px;"
                 html.append(
                     "<figure>"
-                    f"<img src='{art['image_url']}' alt='' "
+                    f"<img src='{image_url}' alt='' "
                     f"style='{size_style} display:block; margin:0.5em 0;'>"
                     "</figure>"
                 )
 
-            # split on double newlines first, then single newlines
+            # Process content into paragraphs
             paragraphs = []
             for block in content.split("\n\n"):
                 for para in block.split("\n"):

@@ -16,6 +16,9 @@ openai:
 
 # Actual max_tokens is 16385 but we're approximating 4 characters per token
 
+# The number of images to get from the news source to look for women.
+max_images: 3
+
 # Prompts for OpenAI
 prompts:
   classification: >-
