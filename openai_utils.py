@@ -42,8 +42,18 @@ def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client) 
 
 def classify_leadership(text: str, cfg: dict, client) -> bool:
     logger.debug("Running zero-shot classification for leadership")
-    answer = open_ai_call(cfg["prompts"]["classification"], text, 1, cfg, client)
-    return answer.lower() == "yes"
+    answer = open_ai_call(cfg["prompts"]["classification"], text, 10, cfg, client)
+    # Process the result
+    if answer.lower().startswith("yes"):
+        is_leader = True
+        # Check if there's more text after "yes" (indicating a name)
+        parts = answer.split(" ", 1)
+        leader_name = parts[1].strip() if len(parts) > 1 else ""
+    else:
+        is_leader = False
+        leader_name = ""
+    return is_leader, leader_name
+
 
 def short_summary(text: str, cfg: dict, client) -> str:
     logger.debug("Requesting short summary from OpenAI")

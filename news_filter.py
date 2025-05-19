@@ -246,7 +246,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
             is_female_leader = False
             if female_names and has_kw:
                 try:
-                    is_female_leader = classify_leadership(body, cfg, openai_pkg)
+                    is_female_leader, leader_name = classify_leadership(body, cfg, openai_pkg)
+                    art["leader_name"] = leader_name
                 except Exception as e:
                     logger.warning(f"OpenAI classification error on '{art.get('title')}': {e}")
 
@@ -463,6 +464,7 @@ def generate_html(results: dict) -> str:
             title = art.get("title", "No title")
             url = art.get("url", "#")
             status = art.get("status", "")
+            if art.get("leader_name"): status.append(f" ({art['leader_name']})")
             content = art.get("content") or art.get("description") or ""
 
             html.append("      <li>")
@@ -478,9 +480,8 @@ def generate_html(results: dict) -> str:
                 else:  # male or dropped images
                     base = 100
 
-                # 2) Double only when this is a female_leader AND we actually have a female face
-                if art.get("status") == "female_leader" and image_status in (
-                "female", "female_majority", "female_prominent"):
+                # 2) Double when this is a female_leader
+                if art.get("status") == "female_leader":
                     final = base * 2
                 else:
                     final = base
