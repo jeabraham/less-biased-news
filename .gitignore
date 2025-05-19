@@ -176,3 +176,4 @@ cython_debug/
 /news.html
 /config.yaml
 /output/
+/cache/
