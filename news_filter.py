@@ -618,6 +618,8 @@ def generate_html(results: dict, metadata: dict = None) -> str:
     - Includes the current date and time at the top of the HTML.
     - Displays the "Processed by less_biased_news" credit with a GitHub link.
     - Displays query strings below each header for context.
+    - Adds a "Table of Contents" link at the end of each section.
+    - Places images to the right and wraps text around them to avoid white space.
 
     Parameters:
     ----------
@@ -653,6 +655,9 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         "      ul { list-style-type: disc; margin-left: 20px; }",
         "      hr { border: 0; height: 1px; background: #ccc; margin: 20px 0; }",
         "      .toc { margin-bottom: 20px; }",
+        "      img { float: right; margin: 0 0 1em 1em; max-width: 300px; }",
+        "      p, li { overflow: auto; }",
+        "      .toc-link { margin-top: 20px; display: block; font-size: 0.9em; }",
         "    </style>",
         "  </head>",
         "  <body>"
@@ -721,10 +726,7 @@ def generate_html(results: dict, metadata: dict = None) -> str:
 
                 size_style = f"max-width:{final}px;"
                 html.append(
-                    "<figure>"
-                    f"<img src='{image_url}' alt='' "
-                    f"style='{size_style} display:block; margin:0.5em 0;'>"
-                    "</figure>"
+                    f"<img src='{image_url}' alt='' style='{size_style}'>"
                 )
 
             # Process and format content into paragraphs
@@ -741,6 +743,9 @@ def generate_html(results: dict, metadata: dict = None) -> str:
             html.append("        </li>")
 
         html.append("      </ul>")
+        # Add "Table of Contents" link at the end of the section
+        html.append(
+            "      <a class='toc-link' href='#' onclick='window.scrollTo({top: 0, behavior: \"smooth\"});'>Back to Table of Contents</a>")
         html.append("    </section>")
         html.append("    <hr>")
 
@@ -751,7 +756,6 @@ def generate_html(results: dict, metadata: dict = None) -> str:
     ])
 
     return "\n".join(html)
-
 # ─── Main Entrypoint ───────────────────────────────────────────────────
 
 def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:str="INFO",use_cache:bool=False):
@@ -760,7 +764,7 @@ def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:
     res = fetch_and_filter(cfg, use_cache)  # Fetch and filter results from API
 
     # Extract metadata (query strings) for HTML generation
-    metadata = {section["name"]: section["q"] for section in cfg if "name" in section and "q" in section}
+    metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
     if fmt == "html":
         out = generate_html(res, metadata)
     else:  # Use plain text formatter for other formats
