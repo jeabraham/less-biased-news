@@ -327,7 +327,7 @@ def process_article_images(art, image_list):
         None
     """
     art["image_urls"] = image_list
-    art["most_relevant_status"] = "not_a_female_story"
+    art["most_relevant_status"] = "no_face"
     art["most_relevant_image"] = None
     art["image_analysis"] = {}  # Store prominence information for all images
 
@@ -340,7 +340,7 @@ def process_article_images(art, image_list):
         if (faces and len(faces) > 0):
             image_status, prominence_score = female_faces(faces)  # Fetch details about the image
         else:
-            image_status = "no face"
+            image_status = "no_face"
             prominence_score = 0
 
         # Store analysis details for the image

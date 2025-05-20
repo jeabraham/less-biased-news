@@ -9,20 +9,45 @@ logger = logging.getLogger(__name__)
 def fetch_with_newspaper(url: str, max_images: int = 3) -> tuple[str, list[str]]:
     """
     Try extracting with newspaper3k, which also provides top_image.
-    Returns (text, image_url) or ("","") on failure.
+    Ensures the top_image is always the first in the returned list of images.
+
+    Args:
+        url (str): The URL of the article to scrape.
+        max_images (int): Maximum number of images to return.
+
+    Returns:
+        tuple[str, list[str]]:
+            - The extracted text of the article.
+            - A list of image URLs, with the top_image as the first element (if available).
+            Returns ("", []) on failure.
     """
     try:
         art = Article(url)
         art.download()
         art.parse()
+
+        # Extract the main text
         text = art.text.strip()
-        # Extract images and limit to `max_images`
-        images = list(art.images)[:max_images]
+
+        # Extract potential images
+        images = list(art.images)  # Original image list
+        top_image = art.top_image  # Newspaper3k's designated top_image
+
+        # Ensure `top_image` is at the start of the images list
+        if top_image and top_image in images:
+            images.remove(top_image)  # Avoid duplication
+        if top_image:
+            images.insert(0, top_image)  # Add to the top
+
+        # Limit the number of images
+        images = images[:max_images]
+
         if text:
             logger.debug(f"newspaper3k succeeded for {url}")
             return text, images
     except Exception as e:
         logger.debug(f"newspaper3k failed for {url}: {e}")
+
     return "", []
 
 def fetch_with_readability(url: str,  max_images: int = 3) -> tuple[str, list[str]]:
