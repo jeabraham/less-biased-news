@@ -255,7 +255,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                     art["content"] = body
             else:
                 # Handle fallback logic for image statuses
-                img_stat = art.get("image_status", "")
+                img_stat = art.get("most_relevant_status", "")
 
                 art["status"] = qcfg.get("fallback_image_male", qcfg["fallback"])
 
@@ -326,37 +326,55 @@ def process_article_images(art, image_list):
     Returns:
         None
     """
-    art["image_urls"] = image_list  # Updated to store a list of image URLs instead of a single URL
-    art["image_statuses"] = []  # Track the status for each image in the list
-
-    # Default article status and most relevant image
-    art["image_status"] = "not_a_female_story"
-    art["image_prominence"] = None
+    art["image_urls"] = image_list
+    art["most_relevant_status"] = "not_a_female_story"
     art["most_relevant_image"] = None
+    art["image_analysis"] = {}  # Store prominence information for all images
 
-    # Analyze each image to determine its status using female_faces
+    # Define valid statuses and their implicit priority
+    valid_statuses = ["female", "female_majority", "female_prominent"]
+    default_priority = len(valid_statuses)  # Use a high index for unexpected statuses
+
     for image_url in image_list:
-        image_analysis = female_faces(image_url)  # Call the rewritten female_faces function
-        image_status = image_analysis["status"]  # Retrieve the status
-        image_prominence = image_analysis["prominence"]  # Retrieve the prominence (or None)
+        faces, dimensions = analyze_image_gender(image_url)
+        if (faces and len(faces) > 0):
+            image_status, prominence_score = female_faces(faces)  # Fetch details about the image
+        else:
+            image_status = "no face"
+            prominence_score = 0
 
-        # Store the status for this image
-        art["image_statuses"].append(image_status)  # Track the status for each image
+        # Store analysis details for the image
+        art["image_analysis"][image_url] = {
+            "status": image_status,
+            "prominence_score": prominence_score,
+        }
 
-        # Update article-level image status and 'most relevant' image
-        if (
-                not art["most_relevant_image"] or  # No most relevant image yet
-                # Prioritize higher statuses: female > female_majority > female_prominent
-                sorted(["female", "female_majority", "female_prominent"]).index(image_status)
-                <
-                sorted(["female", "female_majority", "female_prominent"]).index(art["image_status"])
-        ):
-            art["image_status"] = image_status  # Update the status for the article
+        # Determine the current image's priority
+        current_priority = (
+            valid_statuses.index(image_status) if image_status in valid_statuses else default_priority
+        )
+
+        # Update the article's "most relevant" image based on priority and prominence score
+        if not art["most_relevant_image"]:
+            # If no image selected yet, choose the current one
+            art["most_relevant_status"] = image_status
             art["most_relevant_image"] = image_url
-            art["image_prominence"] = image_prominence
+            highest_priority = current_priority
+            highest_prominence = prominence_score
+        else:
+            # Check if the current image is more relevant
+            if (
+                    current_priority < highest_priority  # Higher-priority status
+                    or (current_priority == highest_priority and prominence_score > highest_prominence)
+                    # Tie-breaking by prominence
+            ):
+                art["most_relevant_status"] = image_status
+                art["most_relevant_image"] = image_url
+                highest_priority = current_priority
+                highest_prominence = prominence_score
 
-    # Fallback: If no "relevant" image is found, default to the first image in the list
-    if not art["most_relevant_image"] and image_list:
+    # Fallback if no relevant image is found
+    if not art.get("most_relevant_image") and image_list:
         art["most_relevant_image"] = image_list[0]
 
 def fetch_newsapi(cfg, name, qcfg, newsapi):
@@ -381,58 +399,60 @@ def fetch_newsapi(cfg, name, qcfg, newsapi):
 
 
 
-def female_faces(image_url: Optional[str]) -> Dict[str, Optional[float]]:
+def female_faces(faces) -> tuple[str, float]:
     """
-    Analyzes the gender distribution in an image and returns the image status.
+    Analyzes the gender distribution in a list of face data and returns the image status and prominence.
 
     Args:
-        image_url (Optional[str]): URL of the image to be analyzed.
+        faces (list): A list of face dictionaries, each containing information like 'gender',
+                      'confidence', and 'prominence'.
 
     Returns:
-        Dict[str, Optional[float]]: A dictionary containing:
-            - "status" (str): Status of the image (e.g., "female_majority", "female_prominent", "no_face", etc.)
-            - "prominence" (Optional[float]): Average prominence of relevant faces (if applicable),
-                                              or None if not applicable.
+        tuple:
+            - status (str): Status of the image (e.g., "female_majority", "female_prominent",
+                            "no_face", "no_female_faces", etc.).
+            - prominence (float): Average prominence of relevant faces or the prominence
+                                            of the most relevant face if applicable; otherwise, 0.
     """
-    if not image_url:  # Handle case of None or empty string
-        faces = []
-    else:
-        faces = analyze_image_gender(image_url)  # Analyze faces in the image
+    # Ensure 'faces' is a list
+    if not isinstance(faces, list):
+        logger.error(f"Unexpected faces type: {type(faces)}")
+        return "error_invalid_faces", 0
 
+    # Ensure all elements in 'faces' are dictionaries
+    faces = [f for f in faces if isinstance(f, dict)]
+
+    # Filter out female faces with sufficient confidence
     female_faces = [
         f for f in faces
-        if f["gender"] == "Woman" and f["confidence"] >= FEMALE_CONFIDENCE_THRESHOLD
+        if f.get("gender") == "Woman" and f.get("confidence", 0) >= FEMALE_CONFIDENCE_THRESHOLD
     ]
+
+    if not female_faces:
+        # No confident female faces found
+        return "no_female_faces", 0
+
     total_faces = len(faces)
     num_female = len(female_faces)
 
-    # Determine image status
+    # Determine the status of the image
     if total_faces > 0 and num_female > total_faces / 2:
         # More than half of the faces are women
-        return {
-            "status": "female_majority",
-            "prominence": sum(f["prominence"] for f in female_faces) / num_female
-        }
+        average_prominence = sum(f["prominence"] for f in female_faces) / num_female
+        return "female_majority", average_prominence
+
     elif faces:
         # Fallback: Check the most prominent face
-        best_face = max(faces, key=lambda f: f["prominence"])
+        best_face = max(faces, key=lambda f: f.get("prominence", 0))
         if best_face["gender"] == "Woman" and best_face["confidence"] >= FEMALE_CONFIDENCE_THRESHOLD:
-            return {
-                "status": "female_prominent",
-                "prominence": best_face["prominence"],
-            }
+            return "female_prominent", best_face["prominence"]
         else:
             # Single most prominent face is not a confident woman
-            return {
-                "status": "dropped_male_or_low_confidence",
-                "prominence": None,
-            }
+            return "dropped_male_or_low_confidence", 0
+
     else:
         # No faces detected
-        return {
-            "status": "no_face",
-            "prominence": None,
-        }
+        return "no_face", 0
 
 def guess_genders(all_persons, gndr):
     try:
