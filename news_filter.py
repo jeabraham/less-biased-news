@@ -549,32 +549,87 @@ def format_text(results: dict)->str:
     return "\n".join(lines)
 
 
-def generate_html(results: dict) -> str:
+def generate_html(results: dict, metadata: dict = None) -> str:
     """
-    Generate an HTML page from the filtered news results.
+    Generate an enhanced HTML page from the filtered news results.
 
-    Each query name becomes a <h2> header, and each article is an <li>
-    including its status tag, link, content, and the most relevant image.
+    Enhances the HTML output as follows:
+    - Adds a Table of Contents (TOC) linking to each query's results.
+    - Includes the current date and time at the top of the HTML.
+    - Displays the "Processed by less_biased_news" credit with a GitHub link.
+    - Displays query strings below each header for context.
+
+    Parameters:
+    ----------
+    results : dict
+        Dictionary of results, where keys are query names and values are lists of articles.
+    metadata : dict, optional
+        A dictionary containing additional metadata such as `query_strings`.
+
+    Returns:
+    --------
+    str
+        A complete HTML string.
     """
     logger.debug("Generating HTML output")
 
+    # Adding optional metadata for query strings
+    metadata = metadata or {}
+
+    # Get the current date and time
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Initialize the HTML output
     html = [
         "<!DOCTYPE html>",
         "<html>",
         "  <head>",
         "    <meta charset='utf-8'>",
         "    <title>News</title>",
+        "    <style>",
+        "      body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0 15px; }",
+        "      h1, h2 { color: #333; }",
+        "      ul { list-style-type: disc; margin-left: 20px; }",
+        "      hr { border: 0; height: 1px; background: #ccc; margin: 20px 0; }",
+        "      .toc { margin-bottom: 20px; }",
+        "    </style>",
         "  </head>",
         "  <body>"
     ]
 
+    # Add page header with date and credit
+    html.extend([
+        "    <h1>News Summary</h1>",
+        f"    <p><strong>Date:</strong> {current_date}</p>",
+        "    <p><strong>Processed by:</strong> "
+        "<a href='https://github.com/jeabraham/less-biased-news' target='_blank'>less_biased_news</a></p>",
+        "    <hr>"
+    ])
+
+    # Generate the Table of Contents (TOC)
+    html.append("    <div class='toc'>")
+    html.append("      <h2>Table of Contents</h2>")
+    html.append("      <ul>")
+    for query_name in results:
+        section_id = query_name.replace(" ", "_").lower()  # Generate HTML-safe IDs
+        html.append(f"        <li><a href='#{section_id}'>{query_name}</a></li>")
+    html.append("      </ul>")
+    html.append("    </div>")
+
+    # Add each section for query results
     for query_name, articles in results.items():
-        html.append(f"    <h2>{query_name}</h2>")
-        html.append("    <ul>")
+        section_id = query_name.replace(" ", "_").lower()  # ID for linking
+        query_string = metadata.get(query_name, "Not provided")  # Get query string from metadata
+
+        html.append(f"    <section id='{section_id}'>")
+        html.append(f"      <h2>{query_name}</h2>")
+        html.append(f"      <p><strong>Query:</strong> {query_string}</p>")
+        html.append("      <ul>")
 
         for art in articles:
             if art.get("status") == "exclude":
-                continue  # skip excluded articles
+                continue  # Skip excluded articles
             title = art.get("title", "No title")
             url = art.get("url", "#")
             status = art.get("status", "")
@@ -582,15 +637,15 @@ def generate_html(results: dict) -> str:
                 status += f" ({art['leader_name']})"  # Append leader name to status
             content = art.get("content") or art.get("description") or ""
 
-            html.append("      <li>")
-            html.append(f"        [{status}] <a href='{url}' target='_blank'>{title}</a>")
+            html.append("        <li>")
+            html.append(f"          [{status}] <a href='{url}' target='_blank'>{title}</a>")
 
             # Include the most relevant image if available
             if art.get("most_relevant_image"):
                 image_url = art["most_relevant_image"]
                 image_status = art.get("most_relevant_status", "")
 
-                # 1) Determine image size based on its status
+                # Determine image size based on its status
                 if image_status in ("female", "female_majority", "female_prominent"):
                     base = 300
                 elif image_status == "no_face":
@@ -598,7 +653,7 @@ def generate_html(results: dict) -> str:
                 else:  # male or less relevant images
                     base = 100
 
-                # 2) Double the size if the article is about a female leader
+                # Double size if the article is about a female leader
                 if art.get("status") == "female_leader":
                     final = base * 2
                 else:
@@ -612,7 +667,7 @@ def generate_html(results: dict) -> str:
                     "</figure>"
                 )
 
-            # Process content into paragraphs
+            # Process and format content into paragraphs
             paragraphs = []
             for block in content.split("\n\n"):
                 for para in block.split("\n"):
@@ -621,12 +676,15 @@ def generate_html(results: dict) -> str:
                         paragraphs.append(text)
 
             for para in paragraphs:
-                html.append(f"        <p>{para}</p>")
+                html.append(f"          <p>{para}</p>")
 
-            html.append("      </li>")
+            html.append("        </li>")
 
-        html.append("    </ul>")
+        html.append("      </ul>")
+        html.append("    </section>")
+        html.append("    <hr>")
 
+    # Close the HTML structure
     html.extend([
         "  </body>",
         "</html>"
@@ -639,12 +697,25 @@ def generate_html(results: dict) -> str:
 def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:str="INFO",use_cache:bool=False):
     setup_logging(log_level)
     cfg=load_config(config_path)
-    res=fetch_and_filter(cfg, use_cache)
-    out=generate_html(res) if fmt=="html" else format_text(res)
-    if output is None: output="news.html" if fmt=="html" else "news.txt"
-    if output.lower()=="console": print(out)
+    res = fetch_and_filter(cfg, use_cache)  # Fetch and filter results from API
+
+    # Pass metadata to generate_html if format is HTML
+    if fmt == "html":
+        # Extract metadata (query strings) for HTML generation
+        metadata = {section["name"]: section["q"] for section in cfg if "name" in section and "q" in section}
+        out = generate_html(res, metadata)
+    else:  # Use plain text formatter for other formats
+        out = format_text(res)
+
+    # Determine output file format
+    if output is None:
+        output = "news.html" if fmt == "html" else "news.txt"
+
+    if output.lower() == "console":
+        print(out)
     else:
-        with open(output,"w",encoding="utf-8") as f: f.write(out)
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(out)
         logger.info(f"Saved results to {output}")
 
 if __name__=="__main__":
