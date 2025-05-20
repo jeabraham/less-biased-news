@@ -231,9 +231,6 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
         # 3) Process each article
         for art, body, image_list in zip(raw_articles, bodies, images):
 
-            # 1) Attach the raw image URLs (list of images for each article)
-            process_article_images(art, image_list)
-
             # 3) Continue processing with spaCy to extract PERSON entities
             doc = nlp(body)
             persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
@@ -251,6 +248,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                 # You can log rejection reasons here
 
             if art["status"] == "female_leader":
+                # Let's look for a good picture of a woman
+                process_article_images(art, image_list)
                 # If the article is classified as about a female leader, handle content summarization
                 if summarize_selected:
                     logger.info(f"Clean-summarizing '{art['title']}'")
@@ -259,6 +258,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                     # Keep the full fetched body
                     art["content"] = body
             else:
+                # Let's check if the first image contains a woman.
+                process_article_images(art, image_list[:1])
                 # Handle fallback logic for image statuses
                 img_stat = art.get("most_relevant_status", "")
 
