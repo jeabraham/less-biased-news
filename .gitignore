@@ -179,3 +179,4 @@ cython_debug/
 /cache/
 /config.yaml
 config.yaml
+/config*.yaml
