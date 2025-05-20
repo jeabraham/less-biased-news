@@ -23,7 +23,7 @@ max_images: 3
 prompts:
   classification: >-
     Does this article include a woman in a genuine leadership role?
-    Answer “yes” or “no” only.
+    Answer only "yes" or “no”, but if you know the name of the woman, include it after "yes".
   short_summary: >-
     Summarize the following article snippet in two sentences:
   spin_genders: >-
@@ -46,7 +46,7 @@ prompts:
   clean_summary: >-
     Cleanly summarize the following article, removing ads, subscription
     prompts, boilerplate text, and distractions, focusing only on the
-    core narrative and quotes by women leaders:
+    core narrative and quotes by women leaders, especially <leader_name>.
 
 
 # Global defaults
@@ -118,17 +118,17 @@ queries:
 
   - name: Canada politics
     provider: mediastack
-    q: "Canada politics"
+    q: "Canada"
     page_size: 60
-    history_days: 5       # override default: grab the last 14 days
     classification: true
     fallback: short_summary  # Options: show-full, short_summary, spin-genders, exclude
     summarize_selected: true
 #    countries: ca doesn't work
+#    history_days: 5       History seems to not work at least not the way we're doing it with the free API tier.
 
   - name: Global News
-    provider: mediastack
-    q: 'global news'
+    provider: newsapi
+    q: 'Global News'
     page_size: 100
     history_days: 5       # override default: grab the last 14 days
     classification: true

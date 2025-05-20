@@ -1,5 +1,6 @@
 # openai_utils.py
 import logging
+import string
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def classify_leadership(text: str, cfg: dict, client) -> bool:
         is_leader = True
         # Check if there's more text after "yes" (indicating a name)
         parts = answer.split(" ", 1)
-        leader_name = parts[1].strip() if len(parts) > 1 else ""
+        leader_name = parts[1].strip(string.punctuation + "—").strip() if len(parts) > 1 else ""  # Clean name
     else:
         is_leader = False
         leader_name = ""
@@ -62,8 +63,32 @@ def short_summary(text: str, cfg: dict, client) -> str:
     return summary
 
 
-def clean_summary(text: str, cfg: dict, client) -> str:
-    cleaned = open_ai_call(cfg["prompts"]["clean_summary"], text, 4000, cfg, client)
+def clean_summary(text: str, cfg: dict, client, leader_name: str = None) -> str:
+    """
+    Cleanly summarize the given text, focusing on women leaders and optionally
+    emphasizing a specific leader if their name is provided.
+
+    Args:
+        text (str): The text to be summarized.
+        cfg (dict): Configuration dictionary containing OpenAI and prompt settings.
+        client: OpenAI client for API calls.
+        leader_name (str, optional): The name of the leader to emphasize, if identified.
+
+    Returns:
+        str: A cleaned summary of the text.
+    """
+    prompt = cfg["prompts"]["clean_summary"]
+
+    # If leader_name is provided, replace the placeholder `<leader_name>` in the prompt
+    if leader_name:
+        prompt = prompt.replace("<leader_name>", leader_name)
+    else:
+        # If no leader is identified, replace the placeholder with a generic focus
+        prompt = prompt.replace("<leader_name>", "women leaders generally")
+
+    # Make the OpenAI API call with the updated prompt
+    cleaned = open_ai_call(prompt, text, 4000, cfg, client)
+
     return cleaned
 
 def spin_genders(text: str, cfg: dict, client) -> str:
