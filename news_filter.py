@@ -536,16 +536,75 @@ def gather_bodies_images_and_persons(
 
 # ─── Formatting ─────────────────────────────────────────────────────────
 
-def format_text(results: dict)->str:
-    lines=[]
-    for name,arts in results.items():
-        lines.append(f"=== {name} ===")
-        for art in arts:
-            content = art.get("content", art.get("description", ""))
-            lines.append(f"- {title}  [{art.get('status', '')}]")
-            lines.append(f"  {url}")
-            lines.append(f"  {content}\n")
-            st=art.get("status","original")
+def format_text(results: dict, metadata: dict = None) -> str:
+    """
+    Generate a text summary from the filtered news results.
+
+    Enhancements:
+    - Formats section headers more clearly and consistently.
+    - Adds query strings (metadata) below each section header, if available.
+    - Improves layout and readability with consistent indentation and markers.
+    - Avoids printing empty or useless information.
+
+    Parameters:
+    ----------
+    results : dict
+        Dictionary of results, where keys are query names and values are lists of articles.
+    metadata : dict, optional
+        A dictionary containing query-specific metadata such as query strings.
+
+    Returns:
+    --------
+    str
+        A structured and readable text output.
+    """
+    # Initialize output lines
+    lines = []
+    metadata = metadata or {}
+
+    # Iterate through the results grouped by query name
+    for name, articles in results.items():
+        # Header for section (query name)
+        lines.append("=" * 60)  # Divider line
+        lines.append(f"=== {name} ===")  # Section header
+
+        # Include query string metadata if available
+        query_string = metadata.get(name, "Unknown query")
+        lines.append(f"Query: {query_string}")
+        lines.append("-" * 60)  # Sub-divider for better readability
+
+        # Iterate through the articles in each section
+        for art in articles:
+            # Skip excluded articles
+            if art.get("status") == "exclude":
+                continue
+
+            # Extract article details
+            title = art.get("title", "No title")
+            url = art.get("url", "#")
+            status = art.get("status", "")
+            leader_name = art.get("leader_name", "")
+            if leader_name:
+                status += f" ({leader_name})"  # Append leader name to status if available
+            content = art.get("content") or art.get("description") or "[No content available]"
+
+            # Print article info
+            lines.append(f"- {title}  [{status}]")
+            lines.append(f"  Link: {url}")
+
+            # Add content in bullet-pointed paragraphs
+            for paragraph in content.split("\n\n"):
+                paragraph = paragraph.strip()
+                if paragraph:  # Avoid blank paragraphs
+                    lines.append(f"    {paragraph}")
+
+            # Add a blank line after each article for separation
+            lines.append("")
+
+        # Add a space between sections for readability
+        lines.append("")
+
+    # Join the lines into a single text output
     return "\n".join(lines)
 
 
@@ -699,13 +758,12 @@ def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:
     cfg=load_config(config_path)
     res = fetch_and_filter(cfg, use_cache)  # Fetch and filter results from API
 
-    # Pass metadata to generate_html if format is HTML
+    # Extract metadata (query strings) for HTML generation
+    metadata = {section["name"]: section["q"] for section in cfg if "name" in section and "q" in section}
     if fmt == "html":
-        # Extract metadata (query strings) for HTML generation
-        metadata = {section["name"]: section["q"] for section in cfg if "name" in section and "q" in section}
         out = generate_html(res, metadata)
     else:  # Use plain text formatter for other formats
-        out = format_text(res)
+        out = format_text(res, metadata)
 
     # Determine output file format
     if output is None:
