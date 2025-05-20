@@ -157,9 +157,14 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
         start = (date.today() - timedelta(days=history)).isoformat()
         params["date"] = f"{start},{end}"
 
-    if keywords: params["keywords"] = keywords
+    # Set additional parameters
+    if keywords:
+        params["keywords"] = keywords
+    if qcfg.get("countries"):
+        params["countries"] = qcfg.get("countries")
+    if qcfg.get("languages"):  # Support for languages parameter
+        params["languages"] = qcfg.get("languages")  # Add languages to params
 
-    if qcfg.get("countries"): params["countries"] = qcfg.get("countries")
     logger.debug(f"Mediastack query params: {params}")
     try:
         resp = requests.get(base_url, params=params, timeout=10)
@@ -276,7 +281,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                     # Apply gender-spin logic
                     art["content"] = spin_genders(body, cfg, openai_pkg)
                 else:
-                    # Default to the article's description
+                    # Default to the article's description, but this article will usually be excluded anyways.
                     art["content"] = art.get("description", "")
 
             # Add the processed article to the results hits
@@ -436,7 +441,7 @@ def female_faces(faces) -> tuple[str, float]:
     num_female = len(female_faces)
 
     # Determine the status of the image
-    if total_faces > 0 and num_female > total_faces / 2:
+    if total_faces > 2 and num_female > total_faces / 2:
         # More than half of the faces are women
         average_prominence = sum(f["prominence"] for f in female_faces) / num_female
         return "female_majority", average_prominence
