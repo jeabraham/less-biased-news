@@ -24,22 +24,22 @@ class AIUtils:
 
     def _detect_environment(self) -> bool:
         """
-        Detect if the environment can support local inference (GPU via CUDA/ROCm or powerful CPU).
+        Detect if the environment can support local inference (GPU via CUDA/MPS or CPU).
         """
         min_ram = self.cfg.get("min_ram", 16)  # Minimum RAM in GB
         min_cores = self.cfg.get("min_cores", 8)  # Minimum logical cores
         ram_gb = psutil.virtual_memory().total / (1024 ** 3)
         cpu_count = psutil.cpu_count(logical=True)
         gpu_cuda = torch.cuda.is_available()
-        gpu_rocm = torch.backends.mps.is_available() or torch.backends.hip.is_available()  # ROCm check
+        gpu_mps = torch.backends.mps.is_available()  # Check for MPS on macOS
+        gpu_type = "CUDA" if gpu_cuda else "MPS" if gpu_mps else "None"
 
         logger.info(
-            f"Detected system specs: {ram_gb:.1f} GB RAM, {cpu_count} CPU cores, "
-            f"CUDA GPU: {gpu_cuda}, ROCm GPU: {gpu_rocm}"
+            f"Detected system specs: {ram_gb:.1f} GB RAM, {cpu_count} CPU cores, GPU: {gpu_type}"
         )
 
         # Decide local AI capability based on thresholds and detected specs
-        if (ram_gb >= min_ram and cpu_count >= min_cores) or (gpu_cuda or gpu_rocm):
+        if (ram_gb >= min_ram and cpu_count >= min_cores) or gpu_cuda or gpu_mps:
             logger.info("Local environment is capable of AI inference.")
             return True
         logger.warning("Local environment does not meet AI inference requirements for local model.")
@@ -47,7 +47,7 @@ class AIUtils:
 
     def _load_local_model(self):
         """
-        Load the local AI model (GPU with CUDA/ROCm or CPU quantized model).
+        Load the local AI model (GPU with CUDA/MPS or CPU quantized model).
         """
         try:
             if torch.cuda.is_available():
@@ -57,12 +57,12 @@ class AIUtils:
                 self.local_model = AutoModelForCausalLM.from_pretrained(
                     model_name, device_map="auto", torch_dtype=torch.float16
                 )
-            elif torch.backends.mps.is_available() or torch.backends.hip.is_available():
-                logger.info("Loading GPU model with ROCm support...")
+            elif torch.backends.mps.is_available():
+                logger.info("Loading GPU model with MPS...")
                 model_name = self.cfg.get("local_model", "EleutherAI/gpt-neo-2.7B")
                 self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
                 self.local_model = AutoModelForCausalLM.from_pretrained(
-                    model_name, device_map="auto", torch_dtype=torch.float16
+                    model_name, device_map="auto", torch_dtype=torch.float32  # MPS requires float32
                 )
             else:
                 logger.info("Loading quantized CPU model using llama.cpp...")
@@ -77,9 +77,15 @@ class AIUtils:
         """
         Perform local inference on the given prompt using GPU or CPU-based models.
         """
-        if torch.cuda.is_available() or torch.backends.mps.is_available() or torch.backends.hip.is_available():
+        if torch.cuda.is_available() or torch.backends.mps.is_available():
             logger.info("Running inference on GPU with local model...")
-            device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "hip"
+            device = (
+                "cuda"
+                if torch.cuda.is_available()
+                else "mps"
+                if torch.backends.mps.is_available()
+                else "cpu"
+            )
             inputs = self.local_tokenizer(prompt, return_tensors="pt").to(device)
             outputs = self.local_model.generate(**inputs, max_length=200)
             return self.local_tokenizer.decode(outputs[0], skip_special_tokens=True)
