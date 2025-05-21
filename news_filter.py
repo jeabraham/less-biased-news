@@ -13,8 +13,11 @@ from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHO
 from datetime import date, timedelta, datetime
 import time
 import json
+import math
+import os
+import json
+from datetime import date
 from typing import Optional, Dict
-
 
 import tiktoken
 
@@ -186,10 +189,47 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
         logger.error(f"Mediastack fetch failed: {e}")
         return []
 
-# ─── Fetch & Filter ────────────────────────────────────────────────────
-import math
+def get_cache_file_paths(query_name: str) -> tuple:
+    """
+    Retrieves the paths for current (most recent) and yesterday's cache files
+    for a given query name.
 
-def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
+    :param query_name: Name of the query to retrieve paths for
+    :return: A tuple with paths (most_recent_cache_path, yesterday_cache_path)
+    """
+    base_dir = "cache"  # Base directory for cached data
+    most_recent_cache = os.path.join(base_dir, f"{query_name}_current.json")
+    yesterday_cache = os.path.join(base_dir, f"{query_name}_yesterday.json")
+    return most_recent_cache, yesterday_cache
+
+def load_cache(file_path: str) -> dict:
+    """
+    Loads the cache from the specified file. Returns an empty dictionary if the file doesn't exist.
+
+    :param file_path: Path to the cache file
+    :return: Dictionary with the cache contents
+    """
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    return {}
+
+def save_cache(file_path: str, data: dict):
+    """
+    Saves the cache data to a file. Adds the current date to the cache.
+
+    :param file_path: Path to the cache file
+    :param data: Data to save (will include articles and current date)
+    """
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Ensure the directory exists
+    save_data = {"date": date.today().isoformat(), "articles": data.get("articles", [])}
+    with open(file_path, "w", encoding="utf-8") as file:
+        json.dump(save_data, file, indent=4)
+
+
+# ─── Fetch & Filter ────────────────────────────────────────────────────
+
+def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False) -> dict:
     logger.info("Initializing NewsAPI client")
     newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
     logger.info("Loading spaCy model")
@@ -203,20 +243,37 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
     for qcfg in cfg["queries"]:
         name = qcfg["name"]
         logger.info(f"Processing query '{name}'")
-        # ─── fetch raw articles via the right source ────────────────
+
+        # ─── Load and Manage Cache for `new_today` Logic ────────────────
+        if new_today:
+            most_recent_cache, yesterday_cache = get_cache_file_paths(name)  # Retrieve cache paths
+            current_cache = load_cache(most_recent_cache)
+
+            # Check if the cache is from today or a previous day
+            is_new_day = current_cache.get("date") != date.today().isoformat()
+            if is_new_day:
+                logger.info(f"New day detected. Updating yesterday's cache for '{name}'")
+                save_cache(yesterday_cache, current_cache)  # Copy current data to yesterday's cache
+                current_cache = {"articles": []}  # Reset current cache for the new day
+
+            # Load yesterday's cache for tagging
+            yesterday_data = load_cache(yesterday_cache)
+            cached_items = yesterday_data.get("articles", []) if yesterday_data else []
+        else:
+            cached_items = []
+
+        # ─── Fetch Raw Articles From the Right Source ────────────────
         provider = qcfg.get("provider", "newsapi").lower()
         if provider == "mediastack":
-          # returns list of { title, url, description, etc. }
-          raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
-          logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
+            raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
+            logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
         else:
             raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
 
-        # 1) Extract all person names across all articles
+        # ─── Extract Names, Bodies, and Images ────────────────
         bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp, max_images=max_images)
 
-        logger.debug(f"Batch Genderize request names ({len(all_persons)}): {all_persons}")
-        # 2) One shot gender detection
+        # Perform gender detection
         gender_map = guess_genders(all_persons, gndr)
 
         hits = []
@@ -228,25 +285,28 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
             cfg.get("default_summarize_selected", False)
         )
 
-        # 3) Process each article
+        # ─── Process Each Article ────────────────
         for art, body, image_list in zip(raw_articles, bodies, images):
-
-            # 3) Continue processing with spaCy to extract PERSON entities
+            # Process spaCy PERSON entities
             doc = nlp(body)
             persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-            stats["persons"] += bool(persons)  # Increment PERSON counter if any entities are found
+            stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
 
             is_female_leader = identify_female_leadership(art, body, cfg, gender_map, persons, stats)
 
-            # 6) Update article status based on classification and image-based fallback logic
+            # Classify articles based on gender leadership
             if is_female_leader:
                 art["status"] = "female_leader"
                 stats["classified_ok"] += 1
             else:
                 art["status"] = qcfg["fallback"]
-                # Existing fallback logic (show-full, short_summary, spin-genders, exclude)
-                # You can log rejection reasons here
 
+            # Tag new articles based on yesterday's cache, if enabled
+            if new_today:
+                cached_titles = {cached_art["title"] for cached_art in cached_items}
+                art["new_today"] = art["title"] not in cached_titles
+
+            # Handle article processing based on classification
             if art["status"] == "female_leader":
                 # Let's look for a good picture of a woman
                 process_article_images(art, image_list)
@@ -264,17 +324,11 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                 img_stat = art.get("most_relevant_status", "")
 
                 art["status"] = qcfg.get("fallback_image_male", qcfg["fallback"])
-
                 if img_stat in ("female", "female_majority", "female_prominent"):
                     art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
-                    logger.info(f"Applying image‐based fallback '{art['status']}' for article '{art['title']}'")
+                    logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")
                 if art["status"] == "show-full":
-                    # Summarize if necessary, or keep the full content
-                    if summarize_selected:
-                        logger.info(f"Clean-summarizing '{art['title']}'")
-                        art["content"] = clean_summary(body, cfg, openai_pkg)
-                    else:
-                        art["content"] = body
+                    art["content"] = clean_summary(body, cfg, openai_pkg) if summarize_selected else body
                 elif art["status"] == "short_summary":
                     # Generate a short summary
                     art["content"] = short_summary(body, cfg, openai_pkg)
@@ -285,18 +339,22 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False) -> dict:
                     # Default to the article's description, but this article will usually be excluded anyways.
                     art["content"] = art.get("description", "")
 
-            # Add the processed article to the results hits
             hits.append(art)
 
         logger.info(
-            f"Stats for '{name}': total={stats['total']}, "
-            f"persons={stats['persons']}, female_names={stats['female_names']}, "
-            f"keyword_hits={stats['keyword_hits']}, classified_ok={stats['classified_ok']}"
+            f"Stats for '{name}': total={stats['total']}, persons={stats['persons']}, "
+            f"female_names={stats['female_names']}, keyword_hits={stats['keyword_hits']}, "
+            f"classified_ok={stats['classified_ok']}"
         )
 
         results[name] = hits
 
+        # ─── Save Processed Articles to Current Cache ────────────────
+        if new_today:
+            save_cache(most_recent_cache, {"articles": hits})  # Save processed articles to `_current` cache
+
     return results
+
 
 
 def identify_female_leadership(art, body, cfg, gender_map, persons, stats):
@@ -608,18 +666,77 @@ def format_text(results: dict, metadata: dict = None) -> str:
     # Join the lines into a single text output
     return "\n".join(lines)
 
+def render_article_to_html(article: dict, query_name: str = None) -> str:
+    """
+    Render an individual article into HTML format.
+
+    Parameters:
+    ----------
+    article : dict
+        The article object containing details such as title, URL, content, images, etc.
+    query_name : str, optional
+        If provided, appends the query name to the article title for context.
+
+    Returns:
+    --------
+    str
+        A formatted HTML string representing the article.
+    """
+    html = []
+
+    # Get article details
+    title = article.get("title", "No title")
+    url = article.get("url", "#")
+    content = article.get("content") or article.get("description") or ""
+    status = article.get("status", "")
+
+    # Add leader name to the status if applicable
+    if article.get("leader_name"):
+        status += f" ({article['leader_name']})"
+
+    # Start HTML for the article
+    html.append("<li>")
+    query_display = f" <em>({query_name})</em>" if query_name else ""
+    html.append(f"  [{status}] <a href='{url}' target='_blank'>{title}</a>{query_display}")
+
+    # Include the most relevant image if available
+    if article.get("most_relevant_image"):
+        image_url = article["most_relevant_image"]
+        image_status = article.get("most_relevant_status", "")
+
+        # Determine image size based on its status
+        if image_status in ("female", "female_majority", "female_prominent"):
+            base = 300
+        elif image_status == "no_face":
+            base = 200
+        else:  # male or less relevant images
+            base = 100
+
+        # Double size if the article is about a female leader
+        if article.get("status") == "female_leader":
+            final = base * 2
+        else:
+            final = base
+
+        size_style = f"max-width:{final}px;"
+        html.append(f"  <img src='{image_url}' alt='' style='{size_style}'>")
+
+    # Process and format content into paragraphs
+    paragraphs = [
+        para.strip()
+        for block in content.split("\n\n") for para in block.split("\n") if para.strip()
+    ]
+    for para in paragraphs:
+        html.append(f"  <p>{para}</p>")
+
+    html.append("</li>")
+    return "\n".join(html)
 
 def generate_html(results: dict, metadata: dict = None) -> str:
     """
     Generate an enhanced HTML page from the filtered news results.
 
-    Enhances the HTML output as follows:
-    - Adds a Table of Contents (TOC) linking to each query's results.
-    - Includes the current date and time at the top of the HTML.
-    - Displays the "Processed by less_biased_news" credit with a GitHub link.
-    - Displays query strings below each header for context.
-    - Adds a "Table of Contents" link at the end of each section.
-    - Places images to the right and wraps text around them to avoid white space.
+    Adds a "New Today" section if applicable and organizes articles by queries.
 
     Parameters:
     ----------
@@ -672,10 +789,30 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         "    <hr>"
     ])
 
+    # Gather articles tagged as "new_today"
+    new_today_articles = []
+    for query_name, articles in results.items():
+        for art in articles:
+            if art.get("new_today", False):
+                new_today_articles.append((query_name, art))  # Include the query name with each article
+
+    # Insert "New Today" section if applicable
+    if new_today_articles:
+        html.append("    <section id='new_today'>")
+        html.append("      <h2>New Today</h2>")
+        html.append("      <ul>")
+        for query_name, art in new_today_articles:
+            html.append(render_article_to_html(art, query_name=query_name))
+        html.append("      </ul>")
+        html.append("      <hr>")
+        html.append("    </section>")
+
     # Generate the Table of Contents (TOC)
     html.append("    <div class='toc'>")
     html.append("      <h2>Table of Contents</h2>")
     html.append("      <ul>")
+    if new_today_articles:
+        html.append("        <li><a href='#new_today'>New Today</a></li>")
     for query_name in results:
         section_id = query_name.replace(" ", "_").lower()  # Generate HTML-safe IDs
         html.append(f"        <li><a href='#{section_id}'>{query_name}</a></li>")
@@ -695,52 +832,7 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         for art in articles:
             if art.get("status") == "exclude":
                 continue  # Skip excluded articles
-            title = art.get("title", "No title")
-            url = art.get("url", "#")
-            status = art.get("status", "")
-            if art.get("leader_name"):
-                status += f" ({art['leader_name']})"  # Append leader name to status
-            content = art.get("content") or art.get("description") or ""
-
-            html.append("        <li>")
-            html.append(f"          [{status}] <a href='{url}' target='_blank'>{title}</a>")
-
-            # Include the most relevant image if available
-            if art.get("most_relevant_image"):
-                image_url = art["most_relevant_image"]
-                image_status = art.get("most_relevant_status", "")
-
-                # Determine image size based on its status
-                if image_status in ("female", "female_majority", "female_prominent"):
-                    base = 300
-                elif image_status == "no_face":
-                    base = 200
-                else:  # male or less relevant images
-                    base = 100
-
-                # Double size if the article is about a female leader
-                if art.get("status") == "female_leader":
-                    final = base * 2
-                else:
-                    final = base
-
-                size_style = f"max-width:{final}px;"
-                html.append(
-                    f"<img src='{image_url}' alt='' style='{size_style}'>"
-                )
-
-            # Process and format content into paragraphs
-            paragraphs = []
-            for block in content.split("\n\n"):
-                for para in block.split("\n"):
-                    text = para.strip()
-                    if text:
-                        paragraphs.append(text)
-
-            for para in paragraphs:
-                html.append(f"          <p>{para}</p>")
-
-            html.append("        </li>")
+            html.append(render_article_to_html(art))  # Use the helper function here
 
         html.append("      </ul>")
         # Add "Table of Contents" link at the end of the section
@@ -756,12 +848,14 @@ def generate_html(results: dict, metadata: dict = None) -> str:
     ])
 
     return "\n".join(html)
+
 # ─── Main Entrypoint ───────────────────────────────────────────────────
 
-def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:str="INFO",use_cache:bool=False):
+def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text", log_level: str = "INFO",
+         use_cache: bool = False, new_today: bool = False):
     setup_logging(log_level)
-    cfg=load_config(config_path)
-    res = fetch_and_filter(cfg, use_cache)  # Fetch and filter results from API
+    cfg = load_config(config_path)
+    res = fetch_and_filter(cfg, use_cache, new_today)  # Pass the new_today flag to fetch_and_filter
 
     # Extract metadata (query strings) for HTML generation
     metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
@@ -781,16 +875,29 @@ def main(config_path:str="config.yaml",output:str=None,fmt:str="text",log_level:
             f.write(out)
         logger.info(f"Saved results to {output}")
 
-if __name__=="__main__":
-    p=argparse.ArgumentParser(description="Fetch/filter news by female leadership")
-    p.add_argument("-c","--config",default="config.yaml")
-    p.add_argument("-o","--output",help="Console or filepath")
-    p.add_argument("-f","--format",choices=["text","html"],default="text")
-    p.add_argument("-l","--log",default="INFO")
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="Fetch/filter news by female leadership")
+    p.add_argument("-c", "--config", default="config.yaml")
+    p.add_argument("-o", "--output", help="Console or filepath")
+    p.add_argument("-f", "--format", choices=["text", "html"], default="text")
+    p.add_argument("-l", "--log", default="INFO")
     p.add_argument(
         "--use-cache", "-C",
         action="store_true",
         help="If set, load Mediastack queries from cache/<query_name>.json instead of calling API"
     )
-    a=p.parse_args();
-    main(config_path=a.config,output=a.output,fmt=a.format,log_level=a.log,use_cache=a.use_cache)
+    p.add_argument(
+        "--new-today", "-N",
+        action="store_true",
+        help="If set, tag new articles compared to the previous day's cache"
+    )
+    a = p.parse_args()
+    main(
+        config_path=a.config,
+        output=a.output,
+        fmt=a.format,
+        log_level=a.log,
+        use_cache=a.use_cache,
+        new_today=a.new_today
+    )
