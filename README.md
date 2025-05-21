@@ -98,6 +98,41 @@ Or use the helper script:
 ```bash
 bin/run_news_filter.sh
 ```
+## Local AI Model Setup
+
+This project supports local AI inference using pre-trained models. For best performance, the system will automatically attempt to download the required local model. However, you can also manually set up a model if desired.
+
+### 1. Automatic Model Download
+By default, the project will download the pre-trained model during initialization (if not already present). Ensure the destination path is configured correctly in `config.yaml`:
+
+```yaml
+local_model_path: "models/llama-cpp/model.bin"
+model_url: "https://huggingface.co/EleutherAI/gpt-neo-2.7B/resolve/main/config.json"
+```
+
+When starting the app, the system will:
+1. Download the model from `model_url`.
+2. Save it at `local_model_path`.
+
+---
+
+### 2. Manual Model Setup
+If you prefer manual setup:
+1. Download the model manually. For example:
+   - From `Hugging Face`: [GPT-Neo 2.7B](https://huggingface.co/EleutherAI/gpt-neo-2.7B)
+   - From other repositories or sources.
+2. Place the model at the desired path (e.g., `models/llama-cpp/model.bin`) and update the configuration accordingly:
+
+```yaml
+local_model_path: "models/your_model_location/model.bin"
+```
+
+### 3. Supported Models
+- **Transformers-based models** (e.g., GPT-Neo, GPT-J): Uses the `transformers` library for GPUs and CPU inference.
+- **Binary models** (e.g., `llama.cpp`): Supports quantized models for CPU-based inference.
+
+With the correct setup, the system will prioritize local inference over fallback methods (e.g., OpenAI API).
+
 
 ## Automation on macOS
 

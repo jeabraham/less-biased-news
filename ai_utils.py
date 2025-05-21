@@ -16,6 +16,7 @@ class AIUtils:
         Initialize AI utility class with configuration. Check local vs API readiness.
         """
         self.cfg = cfg
+        self.local_model_path = self.cfg.get("local_model_path", "llama/cpp/model.bin")
         self.local_capable = self._detect_environment()
         self.local_model = None
         self.local_tokenizer = None
@@ -26,22 +27,36 @@ class AIUtils:
         """
         Detect if the environment can support local inference (GPU via CUDA/MPS or CPU).
         """
-        min_ram = self.cfg.get("min_ram", 16)  # Minimum RAM in GB
-        min_cores = self.cfg.get("min_cores", 8)  # Minimum logical cores
-        ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-        cpu_count = psutil.cpu_count(logical=True)
-        gpu_cuda = torch.cuda.is_available()
-        gpu_mps = torch.backends.mps.is_available()  # Check for MPS on macOS
-        gpu_type = "CUDA" if gpu_cuda else "MPS" if gpu_mps else "None"
+        try:
+            min_ram = self.cfg.get("min_ram", 16)  # Minimum RAM in GB
+            min_cores = self.cfg.get("min_cores", 8)  # Minimum logical cores
+            ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+            cpu_count = psutil.cpu_count(logical=True)
 
-        logger.info(
-            f"Detected system specs: {ram_gb:.1f} GB RAM, {cpu_count} CPU cores, GPU: {gpu_type}"
-        )
+            gpu_cuda = torch.cuda.is_available()
+            gpu_mps = torch.backends.mps.is_available()  # Check for MPS on macOS
+            gpu_type = "CUDA" if gpu_cuda else "MPS" if gpu_mps else "None"
 
-        # Decide local AI capability based on thresholds and detected specs
-        if (ram_gb >= min_ram and cpu_count >= min_cores) or gpu_cuda or gpu_mps:
-            logger.info("Local environment is capable of AI inference.")
-            return True
+            # Log system details
+            logger.info(
+                f"Detected system specs: {ram_gb:.1f} GB RAM, {cpu_count} CPU cores, GPU: {gpu_type}"
+            )
+
+            # Test basic GPU functionality if CUDA or MPS available
+            if gpu_cuda:
+                logger.info("Testing CUDA GPU...")
+                torch.cuda.memory_allocated(device="cuda")  # Dry run
+            elif gpu_mps:
+                logger.info("Testing MPS GPU...")
+                dummy_tensor = torch.ones((1, 1), device="mps")  # Dry run
+
+            # Decide local AI capability
+            if (ram_gb >= min_ram and cpu_count >= min_cores) or gpu_cuda or gpu_mps:
+                logger.info("Local environment is capable of AI inference.")
+                return True
+        except Exception as e:
+            logger.error(f"Environment detection failed: {e}")
+
         logger.warning("Local environment does not meet AI inference requirements for local model.")
         return False
 
@@ -65,10 +80,25 @@ class AIUtils:
                     model_name, device_map="auto", torch_dtype=torch.float32  # MPS requires float32
                 )
             else:
-                logger.info("Loading quantized CPU model using llama.cpp...")
-                self.local_model_path = self.cfg.get("local_model_path", "path/to/llama/cpp/model.bin")
                 if not os.path.exists(self.local_model_path):
-                    raise ValueError(f"Model file not found: {self.local_model_path}")
+                    logger.info("Local model not found. Attempting to download...")
+                    self._download_model()
+
+                # Load model using transformers library for GPUs or CPUs
+                model_name = self.cfg.get("local_model", "EleutherAI/gpt-neo-2.7B")
+                if self.cfg.get("use_transformers", True):
+                    logger.info(f"Loading local transformer model: {model_name}")
+                    self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
+                    self.local_model = AutoModelForCausalLM.from_pretrained(
+                        model_name, device_map="auto"
+                    )
+                else:
+                    # For llama.cpp or binary models
+                    logger.info(f"Using binary model at: {self.local_model_path}")
+                    if not os.path.exists(self.local_model_path):
+                        raise FileNotFoundError(
+                            f"Local model binary not found: {self.local_model_path}"
+                        )
         except Exception as e:
             logger.error(f"Failed to load local model: {e}")
             self.local_capable = False  # Fallback to OpenAI API

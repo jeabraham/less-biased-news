@@ -21,7 +21,7 @@ from typing import Optional, Dict
 
 import tiktoken
 
-from openai_utils import (
+from ai_queries import (
     truncate_for_openai,
     classify_leadership,
     short_summary,
