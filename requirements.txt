@@ -13,3 +13,5 @@ deepface
 opencv-python-headless
 facenet-pytorch
 tiktoken
+psutil
+transformers
