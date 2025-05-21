@@ -245,8 +245,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         logger.info(f"Processing query '{name}'")
 
         # ─── Load and Manage Cache for `new_today` Logic ────────────────
+        most_recent_cache, yesterday_cache = get_cache_file_paths(name)  # Retrieve cache paths
         if new_today:
-            most_recent_cache, yesterday_cache = get_cache_file_paths(name)  # Retrieve cache paths
             current_cache = load_cache(most_recent_cache)
 
             # Check if the cache is from today or a previous day
@@ -350,8 +350,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         results[name] = hits
 
         # ─── Save Processed Articles to Current Cache ────────────────
-        if new_today:
-            save_cache(most_recent_cache, {"articles": hits})  # Save processed articles to `_current` cache
+        save_cache(most_recent_cache, {"articles": hits})  # Save processed articles to `_current` cache
 
     return results
 

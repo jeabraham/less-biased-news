@@ -6,6 +6,7 @@ import psutil
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import openai
+import replicate
 
 logger = logging.getLogger(__name__)
 
