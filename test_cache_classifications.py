@@ -6,6 +6,9 @@ import argparse
 from pathlib import Path
 from ai_utils import AIUtils
 from ai_queries import classify_leadership, short_summary, clean_summary, spin_genders
+from article_fetcher import fetch_full_text_and_images
+
+import openai as openai_pkg
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -13,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class TestCacheClassifications:
-    def __init__(self, cache_folder: str, cfg: dict, ai_util=None, use_openai=True, openai_limit=None):
+    def __init__(self, cache_folder: str, cfg: dict, ai_util=None, use_openai=True, openai_limit=None, no_fetch=False):
         """
         Initialize the test system for running classifications on cached data.
 
@@ -30,6 +33,7 @@ class TestCacheClassifications:
         self.use_openai = use_openai
         self.openai_limit = openai_limit if openai_limit is not None else float("inf")
         self.openai_count = 0
+        self.no_fetch = no_fetch
 
     def load_cache(self):
         """
@@ -83,6 +87,13 @@ class TestCacheClassifications:
         """
         Run classification and summarization tests on cached articles.
         """
+
+        openai_client = None
+
+        if self.use_openai:
+            openai_pkg.api_key = cfg["openai"]["api_key"]
+            openai_client = openai_pkg
+
         logger.info("Loading cached articles...")
         articles = self.load_cache()
         results = []
@@ -94,15 +105,35 @@ class TestCacheClassifications:
         logger.info(f"Found {len(articles)} articles. Starting tests...")
 
         for article in articles:
-            # Skip invalid articles
-            body = article.get("body")
-            if not body:
-                logger.warning(f"Skipping invalid article without 'body': {article}")
+            # Validate article structure
+            if not isinstance(article, dict):
+                logger.warning(f"Skipping non-dict entry: {article}")
                 continue
+
+            # Skip invalid articles
+            if "body" not in article or not article["body"]:
+                if not self.no_fetch:
+                    logger.info(f"Fetching full text for article: {article.get('title', 'Untitled')}...")
+                    try:
+                        # Use fetch_full_text_and_images to retrieve the full text
+                        fetched_body, images = fetch_full_text_and_images(article.get("url"))
+                        article["body"] = fetched_body  # Update 'body' field with fetched text
+                    except Exception as e:
+                        logger.error(f"Failed to fetch article body for: {article.get('url')}. Error: {e}")
+                        continue
+                else:
+                    logger.warning(f"Skipping article without 'body' due to --no-fetch: {article.get('url')}")
+                    continue
 
             if self.openai_count >= self.openai_limit:
                 logger.warning("Reached the OpenAI query limit. Skipping further OpenAI queries.")
-                break
+                self.use_openai = False
+
+            # Validate 'body' before passing article to tests
+            body = article.get("body")
+            if not body:
+                logger.warning(f"Skipping article without valid 'body': {article}")
+                continue
 
             result = {
                 "title": article.get("title", "Untitled"),
@@ -118,7 +149,7 @@ class TestCacheClassifications:
                 start_time = time.time()
                 try:
                     is_leader, leader_name = classify_leadership(
-                        body, self.cfg, None, ai_util=self.ai_util
+                        body, self.cfg, client=openai_client, ai_util=self.ai_util
                     )
                     result["classification"] = {"is_leader": is_leader, "leader_name": leader_name}
                     self.openai_count += 1
@@ -131,7 +162,7 @@ class TestCacheClassifications:
                 start_time = time.time()
                 try:
                     result["short_summary"] = short_summary(
-                        body, self.cfg, None, ai_util=self.ai_util
+                        body, self.cfg, client=openai_client, ai_util=self.ai_util
                     )
                     self.openai_count += 1
                 except Exception as e:
@@ -144,7 +175,7 @@ class TestCacheClassifications:
                 try:
                     leader_name = result["classification"].get("leader_name") if result["classification"] else None
                     result["clean_summary"] = clean_summary(
-                        body, self.cfg, None, ai_util=self.ai_util, leader_name=leader_name
+                        body, self.cfg, client=openai_client, ai_util=self.ai_util, leader_name=leader_name
                     )
                     self.openai_count += 1
                 except Exception as e:
@@ -155,7 +186,7 @@ class TestCacheClassifications:
             if self.use_openai or self.ai_util:
                 start_time = time.time()
                 try:
-                    result["spin_genders"] = spin_genders(body, self.cfg, None, ai_util=self.ai_util)
+                    result["spin_genders"] = spin_genders(body, self.cfg, client=openai_client, ai_util=self.ai_util)
                     self.openai_count += 1
                 except Exception as e:
                     logger.error(f"Error running spin_genders: {e}")
@@ -192,6 +223,7 @@ if __name__ == "__main__":
     parser.add_argument("--use-openai", action="store_true", help="Enable OpenAI-backed classifications.")
     parser.add_argument("--openai-limit", type=int, default=None, help="Limit the number of OpenAI queries.")
     parser.add_argument("--config", type=str, default='config.yaml', help="Path to the configuration YAML file.")
+    parser.add_argument("--no-fetch", action="store_true", help="Disable fetching full text for missing 'body' fields.")
     args = parser.parse_args()
 
     # Load configuration
@@ -210,6 +242,7 @@ if __name__ == "__main__":
         ai_util=ai_util,
         use_openai=args.use_openai,
         openai_limit=args.openai_limit,
+        no_fetch=args.no_fetch,
     )
 
     # Run the tests

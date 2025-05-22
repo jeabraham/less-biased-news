@@ -288,6 +288,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         # ─── Process Each Article ────────────────
         for art, body, image_list in zip(raw_articles, bodies, images):
             # Process spaCy PERSON entities
+            art["body"] = body
             doc = nlp(body)
             persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
             stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
@@ -795,7 +796,20 @@ def generate_html(results: dict, metadata: dict = None) -> str:
             if art.get("new_today", False):
                 new_today_articles.append((query_name, art))  # Include the query name with each article
 
-    # Insert "New Today" section if applicable
+    # Generate the Table of Contents (TOC) FIRST
+    html.append("    <div class='toc'>")
+    html.append("      <h2>Table of Contents</h2>")
+    html.append("      <ul>")
+    if new_today_articles:
+        html.append("        <li><a href='#new_today'>New Today</a></li>")  # Add "New Today" to TOC
+    for query_name in results:
+        section_id = query_name.replace(" ", "_").lower()  # Generate HTML-safe IDs
+        html.append(f"        <li><a href='#{section_id}'>{query_name}</a></li>")
+    html.append("      </ul>")
+    html.append("    </div>")
+    html.append("    <hr>")  # Separate TOC from the content
+
+    # Then add the "New Today" section if applicable
     if new_today_articles:
         html.append("    <section id='new_today'>")
         html.append("      <h2>New Today</h2>")
@@ -805,18 +819,6 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         html.append("      </ul>")
         html.append("      <hr>")
         html.append("    </section>")
-
-    # Generate the Table of Contents (TOC)
-    html.append("    <div class='toc'>")
-    html.append("      <h2>Table of Contents</h2>")
-    html.append("      <ul>")
-    if new_today_articles:
-        html.append("        <li><a href='#new_today'>New Today</a></li>")
-    for query_name in results:
-        section_id = query_name.replace(" ", "_").lower()  # Generate HTML-safe IDs
-        html.append(f"        <li><a href='#{section_id}'>{query_name}</a></li>")
-    html.append("      </ul>")
-    html.append("    </div>")
 
     # Add each section for query results
     for query_name, articles in results.items():

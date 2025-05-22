@@ -1,12 +1,14 @@
+import os
+
+os.environ["USE_TENSOR_PARALLEL"] = "0"
+
 import logging
 import os
-import subprocess
 from pathlib import Path
 import psutil
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import openai
-import replicate
 
 logger = logging.getLogger(__name__)
 
@@ -60,59 +62,72 @@ class AIUtils:
         try:
             model_name = self.localai_cfg.get("local_model", "EleutherAI/gpt-neo-2.7B")
 
-            if torch.cuda.is_available():
-                logger.info("Loading GPU model with CUDA...")
-                self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.local_model = AutoModelForCausalLM.from_pretrained(
-                    model_name, device_map="auto", torch_dtype=torch.float16
-                )
-            elif torch.backends.mps.is_available():
-                logger.info("Loading GPU model with MPS...")
-                self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.local_model = AutoModelForCausalLM.from_pretrained(
-                    model_name, device_map="auto", torch_dtype=torch.float32  # MPS requires float32
-                )
-            else:
-                logger.info("No GPU detected. Attempting to use Local CPU model.")
-                if not os.path.exists(self.local_model_path):
-                    logger.info("Local model not found. Attempting to download...")
-                    self._download_model()
-
-                logger.info(f"Using binary model at: {self.local_model_path}")
-                if not os.path.exists(self.local_model_path):
-                    raise FileNotFoundError(
-                        f"Local model binary not found: {self.local_model_path}"
+            try:
+                if torch.cuda.is_available():
+                    logger.info("Loading GPU model with CUDA...")
+                    self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
+                    self.local_model = AutoModelForCausalLM.from_pretrained(
+                        model_name, device_map="auto", torch_dtype=torch.float16
                     )
+                    self.local_model.device = "cude"
+                    return
+                elif torch.backends.mps.is_available():
+                    logger.info("Loading GPU model with MPS...")
+                    self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
+                    self.local_model = AutoModelForCausalLM.from_pretrained(
+                        model_name, device_map="auto", torch_dtype=torch.float32  # MPS requires float32
+                    )
+                    self.local_model.device = "mps"
+                    return
+            except Exception as e:
+                logger.exception("Exception occurred while loading GPU model.")
+
+            logger.info("No GPU detected. Attempting to use Local CPU model.")
+            #if not os.path.exists(self.local_model_path):
+            #    logger.info("Local model not found. Attempting to download...")
+            self._download_model()
+            #logger.info(f"Using binary model at: {self.local_model_path}")
+            if not os.path.exists(self.local_model_path):
+                self.local_capable = False
+                raise FileNotFoundError(
+                    f"Local model binary not found: {self.local_model_path}"
+                )
+            self.local_model.device = "cpu"
         except Exception as e:
-            logger.error(f"Failed to load local model: {e}")
+            logger.error(f"Failed to load CPU model: {e}")
+            # log stack trace
+            logger.exception("Exception occurred while loading local model.")
             self.local_capable = False  # Fallback to OpenAI API if local fails
 
     def _download_model(self):
-        """
-        Downloads a pre-trained model if missing, saving to the configured local_model_path.
-        """
-        model_url = self.localai_cfg.get("model_url")
-        if not model_url:
-            raise ValueError("No model URL configured for local AI.")
+        model_name = self.localai_cfg.get("cpu_model_name")
+        if not model_name:
+            logger.error("No model name provided in the configuration.")
+            raise ValueError("No model name configured for local AI.")
 
-        save_path = Path(self.local_model_path)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self.local_model_path:
+            logger.error("Local model path is not configured.")
+            raise ValueError("No local model path is configured.")
 
+        # Ensure the directory exists
+        os.makedirs(self.local_model_path, exist_ok=True)
+
+        logger.info(f"Downloading model '{model_name}' to {self.local_model_path}...")
         try:
-            logger.info(f"Downloading model from {model_url}...")
-            import requests
-
-            response = requests.get(model_url, stream=True)
-            response.raise_for_status()
-
-            with save_path.open("wb") as model_file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    model_file.write(chunk)
-
-            logger.info(f"Model successfully downloaded to {self.local_model_path}")
-        except requests.RequestException as e:
-            logger.error(f"Failed to download model from {model_url}: {e}")
+            # Download and cache the model and tokenizer in the specified directory
+            self.local_model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                cache_dir=self.local_model_path
+            )
+            self.local_tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                cache_dir=self.local_model_path
+            )
+            logger.info(f"Model '{model_name}' downloaded and loaded successfully.")
+        except Exception as e:
+            logger.exception(f"Failed to download or load the model '{model_name}': {e}")
             raise
+
 
     def _run_local_inference(self, prompt: str) -> str:
         """
@@ -123,12 +138,7 @@ class AIUtils:
 
         logger.info("Running inference with local model...")
         try:
-            if torch.cuda.is_available():
-                device = "cuda"
-            elif torch.backends.mps.is_available():
-                device = "mps"
-            else:
-                device = "cpu"
+            device = self.local_model.device
 
             inputs = self.local_tokenizer(prompt, return_tensors="pt").to(device)
             outputs = self.local_model.generate(**inputs, max_length=200)
