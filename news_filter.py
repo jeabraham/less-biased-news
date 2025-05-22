@@ -4,26 +4,22 @@ import logging
 import spacy
 from newsapi import NewsApiClient
 from genderize import Genderize, GenderizeException
-import openai as openai_pkg
+
 import argparse
 import requests
 
 from ai_utils import AIUtils
 from article_fetcher import fetch_full_text_and_images
-from typing import List, Tuple, Set
+
 from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
 from datetime import date, timedelta, datetime
 import time
-import json
+
 import math
 import os
 import json
 from datetime import date
-from transformers import AutoTokenizer
 
-from typing import Optional, Dict
-
-import tiktoken
 
 from ai_queries import (
     truncate_for_openai,
@@ -319,7 +315,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                 # If the article is classified as about a female leader, handle content summarization
                 if summarize_selected:
                     logger.info(f"Clean-summarizing '{art['title']}'")
-                    art["content"] = clean_summary(body, cfg, openai_pkg, leader_name=art.get("leader_name"))
+                    art["content"] = clean_summary(body, cfg, aiclient, leader_name=art.get("leader_name"))
                 else:
                     # Keep the full fetched body
                     art["content"] = body

@@ -3,6 +3,8 @@ import logging
 import string
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer
 
+import tiktoken
+
 logger = logging.getLogger(__name__)
 
 
@@ -10,7 +12,7 @@ def truncate_for_openai(
     prompt: str,
     text: str,
     max_tokens: int,
-    tokenizer: PreTrainedTokenizer
+    tokenizer
 ) -> str:
     """
     Truncate `text` so that token_count(prompt) + token_count(text) <= max_tokens.
@@ -19,13 +21,13 @@ def truncate_for_openai(
       prompt:     The part you always include (e.g. system+instruction).
       text:       The user-supplied body you need to fit in.
       max_tokens: Total tokens you can spend on prompt+text.
-      tokenizer:  A HuggingFace tokenizer for exact token counting.
+      tokenizer:  A tiktoken tokenizer for exact token counting.
 
     Returns:
       A version of `text` whose token length, when added to prompt tokens, <= max_tokens.
     """
     # 1) Tokenize prompt once
-    prompt_tokens = tokenizer.encode(prompt, add_special_tokens=False)
+    prompt_tokens = tokenizer.encode(prompt)
     prompt_len = len(prompt_tokens)
 
     # 2) Early exit if prompt itself is too long
@@ -34,10 +36,10 @@ def truncate_for_openai(
             f"Prompt is {prompt_len} tokens ≥ max_tokens={max_tokens}; truncating prompt!"
         )
         # Drop tokens from prompt itself—rare, but avoids infinite loop
-        return tokenizer.decode(prompt_tokens[:max_tokens], skip_special_tokens=True)
+        return tokenizer.decode(prompt_tokens[:max_tokens])
 
     # 3) Tokenize the text
-    text_tokens = tokenizer.encode(text, add_special_tokens=False)
+    text_tokens = tokenizer.encode(text)
     total_len = prompt_len + len(text_tokens)
 
     # 4) If it fits, return original text
@@ -51,7 +53,7 @@ def truncate_for_openai(
     )
     truncated = text_tokens[:allowed]
     # Decode back into a string (may cut mid-word)
-    return tokenizer.decode(truncated, skip_special_tokens=True)
+    return tokenizer.decode(truncated)
 
 
 def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, tokenizer: PreTrainedTokenizer) -> str:
@@ -165,7 +167,7 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
     return is_leader, leader_name
 
 
-def short_summary(text: str, cfg: dict, ai_util=None) -> str:
+def short_summary(text: str, cfg: dict, ai_util) -> str:
     """
     Generate a short summary of the text, optionally using a local AI if available.
     """
