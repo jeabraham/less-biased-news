@@ -224,7 +224,22 @@ if __name__ == "__main__":
     parser.add_argument("--openai-limit", type=int, default=None, help="Limit the number of OpenAI queries.")
     parser.add_argument("--config", type=str, default='config.yaml', help="Path to the configuration YAML file.")
     parser.add_argument("--no-fetch", action="store_true", help="Disable fetching full text for missing 'body' fields.")
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="INFO",  # Default log level
+        help="Set the logging level (default: INFO)"
+    )
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),  # Set logging level
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    logger = logging.getLogger("test_cache_classifications")
+    logger.info("Starting test_cache_classifications with log level: %s", args.log_level)
 
     # Load configuration
     import yaml

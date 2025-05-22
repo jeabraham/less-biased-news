@@ -815,6 +815,8 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         html.append("      <h2>New Today</h2>")
         html.append("      <ul>")
         for query_name, art in new_today_articles:
+            if art.get("status") == "exclude":
+                continue  # Skip excluded articles
             html.append(render_article_to_html(art, query_name=query_name))
         html.append("      </ul>")
         html.append("      <hr>")

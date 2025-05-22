@@ -28,6 +28,7 @@ class AIUtils:
         )
         self.local_model = None
         self.local_tokenizer = None
+        self.local_model_device = None
         self.local_capable = self._detect_environment()
         if self.local_capable:
             self._load_local_model()
@@ -69,18 +70,29 @@ class AIUtils:
                     self.local_model = AutoModelForCausalLM.from_pretrained(
                         model_name, device_map="auto", torch_dtype=torch.float16
                     )
-                    self.local_model.device = "cude"
+                    self.local_model_device = "cuda"
                     return
                 elif torch.backends.mps.is_available():
                     logger.info("Loading GPU model with MPS...")
                     self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
+                    # Load in CPU first, then try to move it.
                     self.local_model = AutoModelForCausalLM.from_pretrained(
-                        model_name, device_map="auto", torch_dtype=torch.float32  # MPS requires float32
-                    )
-                    self.local_model.device = "mps"
+                        model_name, torch_dtype=torch.float16,
+                        low_cpu_mem_usage=True,
+                    )  # MPS no longer requires float32
+                    # self.local_model = AutoModelForCausalLM.from_pretrained(
+                    #     model_name, device_map={"": "mps"}, torch_dtype=torch.float16,
+                    #     max_memory={0: "6GB", "cpu": "58GB"},
+                    # ) #MPS no longer requires float32
+                    self.local_model = self.local_model.to("mps")
+                    self.local_model_device = "mps"
+                    logger.info("All parameters now on:", next(self.local_model.parameters()).device)
                     return
             except Exception as e:
                 logger.exception("Exception occurred while loading GPU model.")
+                # log stack trace
+                logger.error(f"Failed to load GPU model: {e}")
+                logger.info("Falling back to CPU model...")
 
             logger.info("No GPU detected. Attempting to use Local CPU model.")
             #if not os.path.exists(self.local_model_path):
@@ -92,7 +104,7 @@ class AIUtils:
                 raise FileNotFoundError(
                     f"Local model binary not found: {self.local_model_path}"
                 )
-            self.local_model.device = "cpu"
+            self.local_model_device = "cpu"
         except Exception as e:
             logger.error(f"Failed to load CPU model: {e}")
             # log stack trace
@@ -138,8 +150,7 @@ class AIUtils:
 
         logger.info("Running inference with local model...")
         try:
-            device = self.local_model.device
-
+            device = self.local_model_device
             inputs = self.local_tokenizer(prompt, return_tensors="pt").to(device)
             outputs = self.local_model.generate(**inputs, max_length=200)
             return self.local_tokenizer.decode(outputs[0], skip_special_tokens=True)
