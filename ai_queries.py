@@ -142,10 +142,10 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
         logger.debug("Using local AI for classification")
         prompt = cfg["prompts"]["classification"]
         result = run_local_call(prompt, text, 10, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openapi_client is not None:
+    elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for classification")
         result = open_ai_call(
-            cfg["prompts"]["classification"], text, 10, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,
+            cfg["prompts"]["classification"], text, 10, cfg, ai_util.openai_client, ai_util.openai_tokenizer,
         )
     else:
         logger.debug("Failed classification classification")
@@ -176,10 +176,10 @@ def short_summary(text: str, cfg: dict, ai_util=None) -> str:
         logger.debug("Using local AI for short summary")
         prompt = cfg["prompts"]["short_summary"]
         summary = run_local_call(prompt, text, 200, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openapi_client is not None:
+    elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for short summary")
         summary = open_ai_call(
-            cfg["prompts"]["short_summary"], text, 200, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,
+            cfg["prompts"]["short_summary"], text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer,
         )
     else:
         logger.debug("Failed short summary")
@@ -217,9 +217,9 @@ def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str
     if ai_util.local_capable:
         logger.debug("Using local AI for clean summary")
         cleaned_summary = run_local_call(prompt, text, 500, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openapi_client is not None:
+    elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for clean summary")
-        cleaned_summary = open_ai_call(prompt, text, 4000, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,)
+        cleaned_summary = open_ai_call(prompt, text, 4000, cfg, ai_util.openai_client, ai_util.openai_tokenizer,)
     else:
         logger.debug("Failed clean summary")
         return text
@@ -238,10 +238,10 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
         logger.debug("Using local AI for gender spinning")
         prompt = cfg["prompts"]["spin_genders"]
         spun_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openapi_client is not None:
+    elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for gender spinning")
         spun_result = open_ai_call(
-            cfg["prompts"]["spin_genders"], text, 4000, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,
+            cfg["prompts"]["spin_genders"], text, 4000, cfg, ai_util.openai_client, ai_util.openai_tokenizer,
         )
     else:
         logger.debug("Failed sping genders")
