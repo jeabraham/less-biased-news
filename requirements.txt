@@ -30,3 +30,5 @@ torchaudio>=2.0.0,<3.0.0
 # Hugging Face + accelerate (no conflicting tensor-parallel)
 accelerate>=1.7.0,<2.0.0
 transformers[torch,accelerate]==4.51.3
+
+tf-keras

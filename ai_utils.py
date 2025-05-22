@@ -1,5 +1,7 @@
 import os
 
+import tiktoken
+
 os.environ["USE_TENSOR_PARALLEL"] = "0"
 
 import logging
@@ -8,7 +10,8 @@ from pathlib import Path
 import psutil
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-import openai
+
+import openai as openai_pkg
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +26,22 @@ class AIUtils:
         self.openai_cfg = cfg.get("openai", {})
         self.localai_cfg = cfg.get("localai", {})
 
+        openai_pkg.api_key = cfg["openai"]["api_key"]
+        self.openai_client = openai_pkg
+        self.openai_tokenizer = tiktoken.encoding_for_model(self.openai_cfg.get("model", "gpt-3.5-turbo"))
+
         self.local_model_path = self.localai_cfg.get(
             "local_model_path", "models/ggml-model-q4.bin"
         )
         self.local_model = None
         self.local_tokenizer = None
         self.local_model_device = None
-        self.local_capable = self._detect_environment()
-        if self.local_capable:
-            self._load_local_model()
+        if cfg["localai"].get("enabled", False):
+            self.local_capable = self._detect_environment()
+            if self.local_capable and cfg["localai"].get("enabled", False):
+                self._load_local_model()
+        else:
+            self.local_capable = False
 
     def _detect_environment(self) -> bool:
         """
@@ -77,14 +87,21 @@ class AIUtils:
                     self.local_tokenizer = AutoTokenizer.from_pretrained(model_name)
                     # Load in CPU first, then try to move it.
                     self.local_model = AutoModelForCausalLM.from_pretrained(
-                        model_name, torch_dtype=torch.float16,
+                        model_name,
+                        device_map="auto",
+                        torch_dtype=torch.float16,
+                        max_memory={
+                            "mps": "6GB",  # only this much on your 8 GB GPU
+                            "cpu": "58GB"  # the rest on system RAM
+                        },
                         low_cpu_mem_usage=True,
+                        cache_dir=self.local_model_path
                     )  # MPS no longer requires float32
                     # self.local_model = AutoModelForCausalLM.from_pretrained(
                     #     model_name, device_map={"": "mps"}, torch_dtype=torch.float16,
                     #     max_memory={0: "6GB", "cpu": "58GB"},
                     # ) #MPS no longer requires float32
-                    self.local_model = self.local_model.to("mps")
+                    #self.local_model = self.local_model.to("mps")
                     self.local_model_device = "mps"
                     logger.info("All parameters now on:", next(self.local_model.parameters()).device)
                     return
@@ -163,13 +180,12 @@ class AIUtils:
         Perform API-based inference via OpenAI configuration.
         """
         try:
-            openai.api_key = os.getenv("OPENAI_API_KEY", self.openai_cfg.get("api_key"))
             model_name = self.openai_cfg.get("model", "gpt-3.5-turbo")
             max_tokens = self.openai_cfg.get("max_tokens", 16000)
             temperature = self.openai_cfg.get("temperature", 0.7)
 
             logger.info("Performing fallback to OpenAI API...")
-            response = openai.ChatCompletion.create(
+            response = self.openai_client.ChatCompletion.create(
                 model=model_name,
                 temperature=temperature,
                 max_tokens=200,
@@ -179,16 +195,3 @@ class AIUtils:
         except Exception as e:
             logger.error(f"OpenAI API call failed: {e}")
             return "⚠️ OpenAI API fallback failed."
-
-    def generate_response(self, prompt: str) -> str:
-        """
-        Generate a response using local AI if available, otherwise fall back to OpenAI.
-        """
-        try:
-            if self.local_capable:
-                return self._run_local_inference(prompt)
-            else:
-                return self._call_openai_api(prompt)
-        except Exception as e:
-            logger.warning(f"⚠️ Falling back to OpenAI API after local error: {e}")
-            return self._call_openai_api(prompt)

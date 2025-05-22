@@ -7,6 +7,8 @@ from genderize import Genderize, GenderizeException
 import openai as openai_pkg
 import argparse
 import requests
+
+from ai_utils import AIUtils
 from article_fetcher import fetch_full_text_and_images
 from typing import List, Tuple, Set
 from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
@@ -17,6 +19,8 @@ import math
 import os
 import json
 from datetime import date
+from transformers import AutoTokenizer
+
 from typing import Optional, Dict
 
 import tiktoken
@@ -235,7 +239,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
     logger.info("Loading spaCy model")
     nlp = spacy.load("en_core_web_sm")
     gndr = Genderize()
-    openai_pkg.api_key = cfg["openai"]["api_key"]
+
+    aiclient = AIUtils(cfg)
 
     max_images = cfg.get("max_images", 3)  # Default to 3 if not specified in the YAML file
 
@@ -293,7 +298,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
             persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
             stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
 
-            is_female_leader = identify_female_leadership(art, body, cfg, gender_map, persons, stats)
+            is_female_leader = identify_female_leadership(art, body, cfg, gender_map, persons, stats, aiclient)
 
             # Classify articles based on gender leadership
             if is_female_leader:
@@ -329,13 +334,13 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                     art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
                     logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")
                 if art["status"] == "show-full":
-                    art["content"] = clean_summary(body, cfg, openai_pkg) if summarize_selected else body
+                    art["content"] = clean_summary(body, cfg, aiclient) if summarize_selected else body
                 elif art["status"] == "short_summary":
                     # Generate a short summary
-                    art["content"] = short_summary(body, cfg, openai_pkg)
+                    art["content"] = short_summary(body, cfg, aiclient)
                 elif art["status"] == "spin-genders":
                     # Apply gender-spin logic
-                    art["content"] = spin_genders(body, cfg, openai_pkg)
+                    art["content"] = spin_genders(body, cfg, aiclient)
                 else:
                     # Default to the article's description, but this article will usually be excluded anyways.
                     art["content"] = art.get("description", "")
@@ -357,7 +362,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
 
 
-def identify_female_leadership(art, body, cfg, gender_map, persons, stats):
+def identify_female_leadership(art, body, cfg, gender_map, persons, stats, aiclient):
     # 4) Analyze detected PERSON names for female associations
     female_names = [p for p in persons if gender_map.get(p) == "female"]
     has_kw = any(
@@ -372,7 +377,7 @@ def identify_female_leadership(art, body, cfg, gender_map, persons, stats):
     is_female_leader = False
     if female_names and has_kw:
         try:
-            is_female_leader, leader_name = classify_leadership(body, cfg, openai_pkg)
+            is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
             art["leader_name"] = leader_name
         except Exception as e:
             logger.warning(f"OpenAI classification error on '{art.get('title')}': {e}")

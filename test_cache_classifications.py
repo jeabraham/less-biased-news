@@ -248,7 +248,7 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
 
     # Initialize AIUtils for local AI testing
-    ai_util = AIUtils(cfg) if not args.use_openai else None
+    ai_util = AIUtils(cfg)
 
     # Initialize the test system
     test_system = TestCacheClassifications(

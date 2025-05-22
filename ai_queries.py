@@ -1,24 +1,60 @@
 # openai_utils.py
 import logging
 import string
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer
 
 logger = logging.getLogger(__name__)
 
-def truncate_for_openai(prompt: str, text: str, max_tokens: int, chars_per_token: int = 4) -> str:
+
+def truncate_for_openai(
+    prompt: str,
+    text: str,
+    max_tokens: int,
+    tokenizer: PreTrainedTokenizer
+) -> str:
     """
-    Naïvely truncate `text` so that its length in characters
-    does not exceed (completion_tokens * chars_per_token).
+    Truncate `text` so that token_count(prompt) + token_count(text) <= max_tokens.
+
+    Args:
+      prompt:     The part you always include (e.g. system+instruction).
+      text:       The user-supplied body you need to fit in.
+      max_tokens: Total tokens you can spend on prompt+text.
+      tokenizer:  A HuggingFace tokenizer for exact token counting.
+
+    Returns:
+      A version of `text` whose token length, when added to prompt tokens, <= max_tokens.
     """
-    char_limit = max_tokens * chars_per_token - len(prompt)
-    if len(text) > char_limit:
+    # 1) Tokenize prompt once
+    prompt_tokens = tokenizer.encode(prompt, add_special_tokens=False)
+    prompt_len = len(prompt_tokens)
+
+    # 2) Early exit if prompt itself is too long
+    if prompt_len >= max_tokens:
         logger.warning(
-            f"Input body too long ({len(text)} chars); truncating to {char_limit}"
+            f"Prompt is {prompt_len} tokens ≥ max_tokens={max_tokens}; truncating prompt!"
         )
-        return text[:char_limit]
-    return text
+        # Drop tokens from prompt itself—rare, but avoids infinite loop
+        return tokenizer.decode(prompt_tokens[:max_tokens], skip_special_tokens=True)
+
+    # 3) Tokenize the text
+    text_tokens = tokenizer.encode(text, add_special_tokens=False)
+    total_len = prompt_len + len(text_tokens)
+
+    # 4) If it fits, return original text
+    if total_len <= max_tokens:
+        return text
+
+    # 5) Otherwise, truncate text_tokens to fit
+    allowed = max_tokens - prompt_len
+    logger.warning(
+        f"Input too long ({total_len} tokens); truncating text to {allowed} tokens"
+    )
+    truncated = text_tokens[:allowed]
+    # Decode back into a string (may cut mid-word)
+    return tokenizer.decode(truncated, skip_special_tokens=True)
 
 
-def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client) -> str:
+def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, tokenizer: PreTrainedTokenizer) -> str:
     """
     Call the OpenAI API for generating a response based on the given prompt and text.
     """
@@ -26,7 +62,7 @@ def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client) 
     max_toks = cfg["openai"]["max_tokens"]
     temp = cfg["openai"].get("temperature", 0)
 
-    safe_text = truncate_for_openai(prompt, text, max_tokens=max_toks - return_tokens)
+    safe_text = truncate_for_openai(prompt, text, max_tokens=max_toks - return_tokens, tokenizer=tokenizer)
     prompt_plus_text = prompt + "\n\n" + safe_text
     logger.debug("Running OpenAI call")
 
@@ -44,22 +80,72 @@ def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client) 
         logger.warning(f"OpenAI API error: {e}")
         return ""
 
+def run_local_call(
+    prompt: str,
+    text: str,
+    return_tokens: int,
+    cfg: dict,
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    device: str
+) -> str:
+    """
+    Run a “prompt + text” completion on a local Hugging Face model.
 
-def classify_leadership(text: str, cfg: dict, client=None, ai_util=None) -> bool:
+    Args:
+      prompt:    The instruction or system prompt.
+      text:      The user text you want to include (already truncated to fit).
+      return_tokens:  How many tokens you want the model to generate.
+      cfg:       Your localai config (for temperature, sampling settings, etc).
+      model:     The pre-loaded local model.
+      tokenizer: The matching tokenizer.
+      device:    'cpu', 'cuda' or 'mps'.
+
+    Returns:
+      The generated string.
+    """
+    # 1) Truncate the 'text' the same way you did for OpenAI:
+    max_length = cfg["localai"].get("max_input_tokens", 2048) - return_tokens
+    #safe_text = truncate_for_openai(prompt, text, max_tokens=available)
+
+    # 2) Build the combined prompt
+    prompt_plus_text = prompt + "\n\n" + text
+
+    # 3) Tokenize and move inputs to the right device
+    encoding = tokenizer(prompt_plus_text, return_tensors="pt", truncation=True, max_length= max_length)
+    inputs = {k: t.to(device) for k, t in encoding.items()}
+
+    # 4) Generate using max_new_tokens
+    gen_kwargs = {
+        "max_new_tokens": return_tokens,
+        "temperature": cfg["localai"].get("temperature", 0.7),
+        "do_sample": cfg["localai"].get("do_sample", True),
+        "num_beams": 4,
+        # ensure pad_token_id so generation can stop properly
+        "pad_token_id": tokenizer.eos_token_id
+    }
+
+    outputs = model.generate(**inputs, **gen_kwargs)
+
+    # 5) Decode and return
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+
+def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
     """
     Classify text to determine if it mentions a leader, optionally using a local AI if available.
     """
     logger.debug("Running zero-shot classification for leadership")
 
     # Decide between local AI or OpenAI
-    if ai_util and ai_util.local_capable:
+    if ai_util.local_capable:
         logger.debug("Using local AI for classification")
         prompt = cfg["prompts"]["classification"]
-        result = ai_util.generate_response(prompt + "\n" + text)
-    elif client is not None:
+        result = run_local_call(prompt, text, 10, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+    elif ai_util.openapi_client is not None:
         logger.debug("Using OpenAI for classification")
         result = open_ai_call(
-            cfg["prompts"]["classification"], text, 10, cfg, client
+            cfg["prompts"]["classification"], text, 10, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,
         )
     else:
         logger.debug("Failed classification classification")
@@ -79,21 +165,21 @@ def classify_leadership(text: str, cfg: dict, client=None, ai_util=None) -> bool
     return is_leader, leader_name
 
 
-def short_summary(text: str, cfg: dict, client=None, ai_util=None) -> str:
+def short_summary(text: str, cfg: dict, ai_util=None) -> str:
     """
     Generate a short summary of the text, optionally using a local AI if available.
     """
     logger.debug("Requesting short summary")
 
     # Decide between local AI or OpenAI
-    if ai_util and ai_util.local_capable:
+    if ai_util.local_capable:
         logger.debug("Using local AI for short summary")
         prompt = cfg["prompts"]["short_summary"]
-        summary = ai_util.generate_response(prompt + "\n" + text)
-    elif client is not None:
+        summary = run_local_call(prompt, text, 200, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+    elif ai_util.openapi_client is not None:
         logger.debug("Using OpenAI for short summary")
         summary = open_ai_call(
-            cfg["prompts"]["short_summary"], text, 200, cfg, client
+            cfg["prompts"]["short_summary"], text, 200, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,
         )
     else:
         logger.debug("Failed short summary")
@@ -103,7 +189,7 @@ def short_summary(text: str, cfg: dict, client=None, ai_util=None) -> str:
     return summary
 
 
-def clean_summary(text: str, cfg: dict, client=None, ai_util=None, leader_name: str = None) -> str:
+def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str:
     """
     Generate a clean summary of the text, focusing on women leaders or a specific leader.
     Optionally, use a local AI model if available.
@@ -128,12 +214,12 @@ def clean_summary(text: str, cfg: dict, client=None, ai_util=None, leader_name: 
         prompt = prompt.replace("<leader_name>", "women leaders generally")
 
     # Decide between local AI or OpenAI
-    if ai_util and ai_util.local_capable:
+    if ai_util.local_capable:
         logger.debug("Using local AI for clean summary")
-        cleaned_summary = ai_util.generate_response(prompt + "\n" + text)
-    elif client is not None:
+        cleaned_summary = run_local_call(prompt, text, 500, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+    elif ai_util.openapi_client is not None:
         logger.debug("Using OpenAI for clean summary")
-        cleaned_summary = open_ai_call(prompt, text, 4000, cfg, client)
+        cleaned_summary = open_ai_call(prompt, text, 4000, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,)
     else:
         logger.debug("Failed clean summary")
         return text
@@ -141,21 +227,21 @@ def clean_summary(text: str, cfg: dict, client=None, ai_util=None, leader_name: 
     return cleaned_summary
 
 
-def spin_genders(text: str, cfg: dict, client=None, ai_util=None) -> str:
+def spin_genders(text: str, cfg: dict, ai_util) -> str:
     """
     Rewrite the text with genders spun, optionally using local AI if available.
     """
     logger.debug("Requesting spin-genders rewrite")
 
     # Decide between local AI or OpenAI
-    if ai_util and ai_util.local_capable:
+    if ai_util.local_capable:
         logger.debug("Using local AI for gender spinning")
         prompt = cfg["prompts"]["spin_genders"]
-        spun_result = ai_util.generate_response(prompt + "\n" + text)
-    elif client is not None:
+        spun_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+    elif ai_util.openapi_client is not None:
         logger.debug("Using OpenAI for gender spinning")
         spun_result = open_ai_call(
-            cfg["prompts"]["spin_genders"], text, 4000, cfg, client
+            cfg["prompts"]["spin_genders"], text, 4000, cfg, ai_util.openapi_client, ai_util.openapi_tokenizer,
         )
     else:
         logger.debug("Failed sping genders")
