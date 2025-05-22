@@ -10,7 +10,7 @@ source ./venv/bin/activate
 OUT="news_$(date +%Y-%m-%d).html"
 
 # Run the script
-python news_filter.py --format html --output "output/$OUT" --log INFO
+python news_filter.py --format html --output "output/$OUT" --new-today --log INFO
 
 # Open in default browser
 open "output/$OUT"
