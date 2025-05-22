@@ -248,21 +248,39 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         # ─── Load and Manage Cache for `new_today` Logic ────────────────
         most_recent_cache, yesterday_cache = get_cache_file_paths(name)  # Retrieve cache paths
         if new_today:
+            logger.info("Loading the most recent cache...")
             current_cache = load_cache(most_recent_cache)
 
             # Check if the cache is from today or a previous day
             is_new_day = current_cache.get("date") != date.today().isoformat()
+            logger.debug("Cache date: %s, Today's date: %s, Is new day: %s",
+                         current_cache.get("date"), date.today().isoformat(), is_new_day)
+
             if is_new_day:
-                logger.info(f"New day detected. Updating yesterday's cache for '{name}'")
-                save_cache(yesterday_cache, current_cache)  # Copy current data to yesterday's cache
-                current_cache = {"articles": []}  # Reset current cache for the new day
+                logger.info(f"New day detected. Updating yesterday's cache for '{name}'.")
+                try:
+                    save_cache(yesterday_cache, current_cache)  # Copy current data to yesterday's cache
+                    logger.debug("Yesterday's cache updated successfully.")
+                except Exception as e:
+                    logger.error("Failed to update yesterday's cache: %s", e)
+                    raise
 
-            # Load yesterday's cache for tagging
-            yesterday_data = load_cache(yesterday_cache)
+                yesterday_data = current_cache
+            else:
+                logger.info("Today's data is already up-to-date. Loading yesterday's cache.")
+                try:
+                    yesterday_data = load_cache(yesterday_cache)
+                    logger.debug("Yesterday's cache loaded successfully.")
+                except Exception as e:
+                    logger.error("Failed to load yesterday's cache: %s", e)
+                    raise
+
             cached_items = yesterday_data.get("articles", []) if yesterday_data else []
+            logger.debug("Number of articles in yesterday's cache: %d", len(cached_items))
         else:
-            cached_items = []
+            logger.info("new_today is False. Skipping cache operations.")
 
+        cached_titles = {cached_art.get("title", "") for cached_art in cached_items}
         # ─── Fetch Raw Articles From the Right Source ────────────────
         provider = qcfg.get("provider", "newsapi").lower()
         if provider == "mediastack":
@@ -305,8 +323,9 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
             # Tag new articles based on yesterday's cache, if enabled
             if new_today:
-                cached_titles = {cached_art["title"] for cached_art in cached_items}
-                art["new_today"] = art["title"] not in cached_titles
+                is_new = art["title"] not in cached_titles
+                art["new_today"] = is_new
+                logger.debug(f"{'New Title ->' if is_new else 'NOT New Title ->'} {art['title']}")
 
             # Handle article processing based on classification
             if art["status"] == "female_leader":
