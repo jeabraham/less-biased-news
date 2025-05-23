@@ -25,6 +25,13 @@ class AIUtils:
         # Separate OpenAI and LocalAI configurations
         self.openai_cfg = cfg.get("openai", {})
         self.localai_cfg = cfg.get("localai", {})
+        self.huggingface_model = self.localai_cfg.get("summarization_model", "facebook/bart-large-cnn")
+
+        local_summarization_cfg = self.cfg.get("local_summarization", {})
+        if not isinstance(local_summarization_cfg, dict):
+            local_summarization_cfg = {}
+        self.local_summarization = local_summarization_cfg.get("enabled", False)
+        self.local_summarization_model = local_summarization_cfg.get("model", "facebook/bart-large-cnn")
 
         openai_pkg.api_key = cfg["openai"]["api_key"]
         self.openai_client = openai_pkg

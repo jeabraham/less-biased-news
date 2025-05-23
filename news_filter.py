@@ -316,6 +316,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
         # ─── Load and Manage Cache for `new_today` Logic ────────────────
         most_recent_cache, yesterday_cache = get_cache_file_paths(name)  # Retrieve cache paths
+        cached_items=[]
         if new_today:
             logger.info("Loading the most recent cache...")
             current_cache = load_cache(most_recent_cache)
@@ -349,7 +350,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         else:
             logger.info("new_today is False. Skipping cache operations.")
 
-        cached_titles = {cached_art.get("title", "") for cached_art in cached_items}
+        cached_titles = {cached_art.get("title", "") for cached_art in (cached_items or [])}
+
         # ─── Fetch Raw Articles From the Right Source ────────────────
         provider = qcfg.get("provider", "newsapi").lower()
         if provider == "mediastack":
@@ -421,11 +423,11 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclient, nlp, gender_map, stats,
                                    summarize_selected = True):
     body = art["body"]
+    doc = nlp(body)
     if qcfg.get("remove_male_pronouns", False):
         body = replace_male_pronouns_with_neutral(body)
     if qcfg.get("male_initials", False):
         body = replace_male_first_names_with_initials(body, gender_map)
-    doc = nlp(body)
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
     is_female_leader, leader_name = identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient)
@@ -435,7 +437,14 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         art["leader_name"] = leader_name
         stats["classified_ok"] += 1
     else:
-        art["status"] = qcfg["fallback"]
+        # Check if any detected person in 'persons' is mapped to "women" via gender_map
+        for person in persons:
+            if (gender_map.get(person) or "").lower() == "female":
+                art["status"] = qcfg.get("fallback_women", qcfg["fallback"])  # Use fallback_women if it exists
+                break
+        else:
+            art["status"] = qcfg["fallback"]
+
     # Handle article processing based on classification
     if art["status"] == "female_leader":
         # Let's look for a good picture of a woman
@@ -452,8 +461,6 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         process_article_images(art, image_list[:1])
         # Handle fallback logic for image statuses
         img_stat = art.get("most_relevant_status", "")
-
-        art["status"] = qcfg.get("fallback_image_male", qcfg["fallback"])
         if img_stat in ("female", "female_majority", "female_prominent"):
             art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
             logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")

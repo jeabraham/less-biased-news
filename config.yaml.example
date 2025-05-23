@@ -29,6 +29,9 @@ localai:
   "max_memory_mps": "6GB"  # at most 6 GB on the Vega 56
   "max_memory_cpu": "58GB"   # the rest on system RAM
 
+local_summarization:
+    "enabled": True
+    "model": "facebook/bart-large-cnn"
 
 # The number of images to get from the news source to look for women.
 max_images: 3
@@ -49,22 +52,17 @@ prompts:
     2. **Draft**
        • Remove all ads, subscription asks, boilerplate, and distractions.
        • Preserve every named woman or girl — her full name and all her quotes exactly — do not diminish her role.
-       • Replace every male first name with its initial only (e.g. “Stephen Hunter” → “S. Hunter”).
        • Do **not** alter women’s or girls’ names, preserve all existing female names and feminine pronouns.
-       • Omit any man who isn’t essential.
-       • Remove all male pronouns—do **not** swap in “she/her”; simply rewrite to avoid them.
+       • Rewrite to reduce the use of gender-neutral pronouns such as they/them.
 
     3. **Enforce Length**
        • Final output **must** be **500 words or fewer**.
        • After drafting, count your words.
-       • If you exceed 500, delete the least-critical sentences (starting with non-essential men) and recount.
+       • If you exceed 500, delete the least-critical sentences (preserving women) and recount.
        • Repeat until the word count is ≤ 500.
 
     4. **Faithful & Complete**
        • Maintain the original meaning, tone, and key facts.
-
-    5. **FInal Check**
-       • Check male names and pronouns once more, to ensure they are all removed, and check that no women or girls have their names or pronouns altered.
 
     —
     **Original article:**

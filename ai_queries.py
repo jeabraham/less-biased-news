@@ -5,6 +5,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenize
 
 import tiktoken
 
+from summarization import summarize_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -166,25 +168,33 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
         leader_name = ""
     return is_leader, leader_name
 
-
 def short_summary(text: str, cfg: dict, ai_util) -> str:
     """
-    Generate a short summary of the text, optionally using a local AI if available.
+    Generate a short summary of the text, optionally using a local AI or Hugging Face's local summarization.
     """
     logger.debug("Requesting short summary")
 
-    # Decide between local AI or OpenAI
-    if ai_util.local_capable:
+    # Decide between local AI, Hugging Face summarizer, or OpenAI
+    if ai_util.local_summarization:
+        logger.debug("Using Hugging Face summarization for short summary")
+        try:
+            summary = summarize_text(input_text=text, model=ai_util.local_summarization_model, max_length=130, min_length=30)
+        except Exception as e:
+            logger.error(f"Error during Hugging Face summarization: {e}")
+            return ""
+    elif ai_util.local_capable:
         logger.debug("Using local AI for short summary")
-        prompt = cfg["prompts"]["short_summary"]
-        summary = run_local_call(prompt, text, 200, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+        prompt = cfg["prompts"].get("short_summary", "")
+        summary = run_local_call(prompt, text, 200, cfg, ai_util.local_model, ai_util.local_tokenizer,
+                                 ai_util.local_model_device)
+
     elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for short summary")
         summary = open_ai_call(
-            cfg["prompts"]["short_summary"], text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer,
+            cfg["prompts"].get("short_summary", ""), text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer
         )
     else:
-        logger.debug("Failed short summary")
+        logger.debug("Failed to generate short summary: No available summarization method")
         return ""
 
     logger.info("Summary generated")
