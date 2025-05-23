@@ -10,9 +10,9 @@ mediastack:
 
 openai:
   api_key: "sk-proj--"
-  model: "gpt-3.5-turbo"
+  model: "gpt-4"
   max_tokens: 16000
-  temperature: 0
+  temperature: 0.1
 # Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
 
 localai:
@@ -42,14 +42,15 @@ prompts:
   short_summary: >-
     Summarize the following article snippet in two sentences:
   spin_genders: >-
-    Please rewrite the following article “cleanly” under these exact rules:
+    Please rewrite the following article under these exact rules:
 
-    1. **If no women or girls play an important role**, skip all other steps and write a **two-sentence summary** (≤ 100 words).
+    1. **If no women or girls are mentioned in the article**, skip all other steps and write a **two-sentence summary** (≤ 100 words).
 
     2. **Draft**
        • Remove all ads, subscription asks, boilerplate, and distractions.
        • Preserve every named woman or girl — her full name and all her quotes exactly — do not diminish her role.
-       • Replace every male first name with its initial only (e.g. “Stephen Hunter” → “S. Hunter”). Do **not** alter women’s or girls’ names.
+       • Replace every male first name with its initial only (e.g. “Stephen Hunter” → “S. Hunter”).
+       • Do **not** alter women’s or girls’ names, preserve all existing female names and feminine pronouns.
        • Omit any man who isn’t essential.
        • Remove all male pronouns—do **not** swap in “she/her”; simply rewrite to avoid them.
 
@@ -61,6 +62,9 @@ prompts:
 
     4. **Faithful & Complete**
        • Maintain the original meaning, tone, and key facts.
+
+    5. **FInal Check**
+       • Check male names and pronouns once more, to ensure they are all removed, and check that no women or girls have their names or pronouns altered.
 
     —
     **Original article:**
@@ -125,8 +129,12 @@ queries:
     q: "Calgary"
     page_size: 10
     classification: false
-    fallback: short_summary
+    fallback_image_female: spin_genders
+    fallback: short_summary  # Options: show_full, short_summary, spin
+    fallback_women: spin_genders
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
 
   - name: Canada
     provider: mediastack
@@ -134,8 +142,11 @@ queries:
     page_size: 35
     classification: true
     languages: en
-    fallback: spin_genders  # Options: show_full, short_summary, spin_genders, exclude
+    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
 #    countries: ca doesn't work
 #    history_days: 5       History seems to not work at least not the way we're doing it with the free API tier.
 
@@ -148,15 +159,19 @@ queries:
     fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
     fallback_image_female: short_summary     # if a woman’s face is prominent
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
 
   - name: Canada Women
     provider: newsapi
     q: '"Canada" and ("woman" or "women" or "girl")'
-    page_size: 50
+    page_size: 20
     classification: true
     fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
     fallback_image_female: short_summary     # if a woman’s face is prominent
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
 
   - name: Skiing
     provider: newsapi
@@ -164,8 +179,11 @@ queries:
     page_size: 25
     classification: true
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_women: spin_genders
     fallback_image_female: show_full     # if a woman’s face is prominent
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
 
   - name: Trombone
     provider: newsapi
@@ -173,5 +191,8 @@ queries:
     page_size: 20
     classification: true
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_women: spin_genders
     fallback_image_female: show_full     # if a woman’s face is prominent
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true

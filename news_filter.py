@@ -226,6 +226,74 @@ def save_cache(file_path: str, data: dict):
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(save_data, file, indent=4)
 
+def replace_male_first_names_with_initials(text, gender_map):
+    """
+    Replace male first names in the provided text with their initials, based on a given gender map.
+
+    Args:
+        text (str): The input text where names will be replaced.
+        gender_map (dict): A dictionary mapping full names to their genders
+                           (e.g., {"Stephen Hunter": "male", "Alice Doe": "female"}).
+
+    Returns:
+        str: The text with male first names replaced with their initials.
+    """
+    import re
+
+    if not isinstance(text, str):
+        raise ValueError("The input argument 'text' must be a string.")
+    if not isinstance(gender_map, dict):
+        raise ValueError("The input argument 'gender_map' must be a dictionary.")
+
+    # Reverse sort persons by length to handle cases like ("John Smith", "John") properly
+    male_names = [name for name, gender in gender_map.items() if gender and gender.lower() == "male"]
+    male_names.sort(key=len, reverse=True)
+
+    def replace_name(match):
+        full_name = match.group(0)
+        if full_name in gender_map and gender_map[full_name].lower() == "male":
+            first_name, *last_name = full_name.split(" ")
+            if first_name and last_name:
+                # Replace first name with its initial
+                return f"{first_name[0]}. {' '.join(last_name)}"
+        return full_name
+
+    # Construct regex to find male names in text
+    name_pattern = r'\b(?:' + '|'.join(map(re.escape, male_names)) + r')\b'
+    return re.sub(name_pattern, replace_name, text)
+
+def replace_male_pronouns_with_neutral(text):
+    """
+    Replace male pronouns in the given text with gender-neutral pronouns.
+
+    Args:
+        text (str): The input text where pronouns will be replaced.
+
+    Returns:
+        str: The text with male pronouns replaced by gender-neutral pronouns.
+    """
+    import re
+
+    if not isinstance(text, str):
+        raise ValueError("The input argument 'text' must be a string.")
+
+    # Map of male pronouns to gender-neutral alternatives
+    pronoun_map = {
+        r'\bhe\b': 'they',
+        r'\bHe\b': 'They',
+        r'\bhim\b': 'them',
+        r'\bHim\b': 'Them',
+        r'\bhis\b': 'their',
+        r'\bHis\b': 'Their',
+        r'\bhimself\b': 'themselves',
+        r'\bHimself\b': 'Themselves'
+    }
+
+    # Replace male pronouns with gender-neutral ones
+    for male_pronoun, neutral_pronoun in pronoun_map.items():
+        text = re.sub(male_pronoun, neutral_pronoun, text)
+
+    return text
 
 
 # ─── Fetch & Filter ────────────────────────────────────────────────────
@@ -353,6 +421,10 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclient, nlp, gender_map, stats,
                                    summarize_selected = True):
     body = art["body"]
+    if qcfg.get("remove_male_pronouns", False):
+        body = replace_male_pronouns_with_neutral(body)
+    if qcfg.get("male_initials", False):
+        body = replace_male_first_names_with_initials(body, gender_map)
     doc = nlp(body)
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
@@ -572,7 +644,8 @@ def guess_genders(all_persons, gndr):
             for name in all_persons:
                 first = name.split()[0]
                 g = local_detector.get_gender(first)
-                gender_map[name] = "female" if g in ("female", "mostly_female") else None
+                gender_map[name] = "female" if g in ("female", "mostly_female") else "male" if g in (
+                "male", "mostly_male") else None
             logger.debug(f"Local gender-map: {gender_map}")
         else:
             logger.error(
