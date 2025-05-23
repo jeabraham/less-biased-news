@@ -233,7 +233,7 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
     """
     Rewrite the text with genders spun, optionally using local AI if available.
     """
-    logger.debug("Requesting spin-genders rewrite")
+    logger.debug("Requesting spin_genders rewrite")
 
     # Decide between local AI or OpenAI
     if ai_util.local_capable:
@@ -249,5 +249,5 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
         logger.debug("Failed sping genders")
         return text
 
-    logger.info("Received spin-genders rewrite")
+    logger.info("Received spin_genders rewrite")
     return spun_result

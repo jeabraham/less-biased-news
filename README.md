@@ -81,7 +81,7 @@ Key sections in `config.yaml`:
   - `page_size`: Number of items per request.  
   - `history_days`: How many days back to fetch (default 14) (only for mediastack).
   - `classification`: `true` to apply gender-based filtering; `false` to include all (future functinoality).  
-  - `fallback`: One of `show-full`, `short_summary`, `spin-genders`, `exclude`.  
+  - `fallback`: One of `show_full`, `short_summary`, `spin_genders`, `exclude`.  
   - `fallback_image_female`: Override fallback if a woman’s face is detected in the lead image.  
   - `summarize_selected`: `true` to summarize articles passing classification, recommended to remove ads, boilerplate, or calls-to-subscribe.
 

@@ -114,9 +114,9 @@ leadership_keywords:
 #   - `q`: your NewsAPI query (supports quoted phrases, +/– prefixes, AND/OR/NOT)
 #   - `classification`: whether to apply the female-leadership filter
 #   - `fallback`: what to do with non-female-leadership articles
-#       * show-full: include original
+#       * show_full: include original
 #       * short_summary: replace content with OpenAI summary
-#       * spin-genders: rewrite via OpenAI with female spin
+#       * spin_genders: rewrite via OpenAI with female spin
 #       * exclude: drop it
 queries:
 
@@ -134,7 +134,7 @@ queries:
     page_size: 35
     classification: true
     languages: en
-    fallback: spin-genders  # Options: show-full, short_summary, spin-genders, exclude
+    fallback: spin_genders  # Options: show_full, short_summary, spin_genders, exclude
     summarize_selected: true
 #    countries: ca doesn't work
 #    history_days: 5       History seems to not work at least not the way we're doing it with the free API tier.
@@ -145,7 +145,7 @@ queries:
     page_size: 100
     history_days: 5       # override default: grab the last 14 days
     classification: true
-    fallback: exclude  # Options: show-full, short_summary, spin-genders, exclude
+    fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
     fallback_image_female: short_summary     # if a woman’s face is prominent
     summarize_selected: true
 
@@ -154,7 +154,7 @@ queries:
     q: '"Canada" and ("woman" or "women" or "girl")'
     page_size: 50
     classification: true
-    fallback: exclude  # Options: show-full, short_summary, spin-genders, exclude
+    fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
     fallback_image_female: short_summary     # if a woman’s face is prominent
     summarize_selected: true
 
@@ -163,8 +163,8 @@ queries:
     q: '"Skiing"'
     page_size: 25
     classification: true
-    fallback: short_summary  # Options: show-full, short_summary, spin-genders, exclude
-    fallback_image_female: show-full     # if a woman’s face is prominent
+    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_image_female: show_full     # if a woman’s face is prominent
     summarize_selected: true
 
   - name: Trombone
@@ -172,6 +172,6 @@ queries:
     q: '"Trombone"'
     page_size: 20
     classification: true
-    fallback: short_summary  # Options: show-full, short_summary, spin-genders, exclude
-    fallback_image_female: show-full     # if a woman’s face is prominent
+    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_image_female: show_full     # if a woman’s face is prominent
     summarize_selected: true

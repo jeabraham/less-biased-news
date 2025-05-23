@@ -227,6 +227,7 @@ def save_cache(file_path: str, data: dict):
         json.dump(save_data, file, indent=4)
 
 
+
 # ─── Fetch & Filter ────────────────────────────────────────────────────
 
 def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False) -> dict:
@@ -384,12 +385,12 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         if img_stat in ("female", "female_majority", "female_prominent"):
             art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
             logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")
-        if art["status"] == "show-full":
+        if art["status"] == "show_full":
             art["content"] = clean_summary(body, cfg, aiclient) if summarize_selected else body
         elif art["status"] == "short_summary":
             # Generate a short summary
             art["content"] = short_summary(body, cfg, aiclient)
-        elif art["status"] == "spin-genders":
+        elif art["status"] == "spin_genders":
             # Apply gender-spin logic
             art["content"] = spin_genders(body, cfg, aiclient)
         else:
