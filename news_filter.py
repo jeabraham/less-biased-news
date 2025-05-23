@@ -308,57 +308,30 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         for art, body, image_list in zip(raw_articles, bodies, images):
             # Process spaCy PERSON entities
             art["body"] = body
-            doc = nlp(body)
-            persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-            stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
-
-            is_female_leader = identify_female_leadership(art, body, cfg, gender_map, persons, stats, aiclient)
-
-            # Classify articles based on gender leadership
-            if is_female_leader:
-                art["status"] = "female_leader"
-                stats["classified_ok"] += 1
-            else:
-                art["status"] = qcfg["fallback"]
-
             # Tag new articles based on yesterday's cache, if enabled
             if new_today:
                 is_new = art["title"] not in cached_titles
                 art["new_today"] = is_new
+                if is_new:
+                    categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
+                                                            stats,
+                                                            summarize_selected)
+                else:
+                    # Fetch status and content from cached data if article is not new
+                    for cached_art in cached_items:
+                        if cached_art.get("title") == art["title"]:
+                            art["status"] = cached_art.get("status", qcfg["fallback"])
+                            art["content"] = cached_art.get("content", art.get("description", "[No content available]"))
+                            art["image_urls"] = cached_art.get("image_urls", [])
+                            art["most_relevant_status"] = cached_art.get("most_relevant_status", "no_face")
+                            art["most_relevant_image"] = cached_art.get("most_relevant_image", None)
+                            art["image_analysis"] = cached_art.get("image_analysis", {})
+                            break
                 logger.debug(f"{'New Title ->' if is_new else 'NOT New Title ->'} {art['title']}")
-
-            # Handle article processing based on classification
-            if art["status"] == "female_leader":
-                # Let's look for a good picture of a woman
-                process_article_images(art, image_list)
-                # If the article is classified as about a female leader, handle content summarization
-                if summarize_selected:
-                    logger.info(f"Clean-summarizing '{art['title']}'")
-                    art["content"] = clean_summary(body, cfg, aiclient, leader_name=art.get("leader_name"))
-                else:
-                    # Keep the full fetched body
-                    art["content"] = body
             else:
-                # Let's check if the first image contains a woman.
-                process_article_images(art, image_list[:1])
-                # Handle fallback logic for image statuses
-                img_stat = art.get("most_relevant_status", "")
-
-                art["status"] = qcfg.get("fallback_image_male", qcfg["fallback"])
-                if img_stat in ("female", "female_majority", "female_prominent"):
-                    art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
-                    logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")
-                if art["status"] == "show-full":
-                    art["content"] = clean_summary(body, cfg, aiclient) if summarize_selected else body
-                elif art["status"] == "short_summary":
-                    # Generate a short summary
-                    art["content"] = short_summary(body, cfg, aiclient)
-                elif art["status"] == "spin-genders":
-                    # Apply gender-spin logic
-                    art["content"] = spin_genders(body, cfg, aiclient)
-                else:
-                    # Default to the article's description, but this article will usually be excluded anyways.
-                    art["content"] = art.get("description", "")
+                categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
+                                                        stats,
+                                                        summarize_selected)
 
             hits.append(art)
 
@@ -376,8 +349,55 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
     return results
 
 
+def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclient, nlp, gender_map, stats,
+                                   summarize_selected = True):
+    body = art["body"]
+    doc = nlp(body)
+    persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+    stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
+    is_female_leader, leader_name = identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient)
+    # Classify articles based on gender leadership
+    if is_female_leader:
+        art["status"] = "female_leader"
+        art["leader_name"] = leader_name
+        stats["classified_ok"] += 1
+    else:
+        art["status"] = qcfg["fallback"]
+    # Handle article processing based on classification
+    if art["status"] == "female_leader":
+        # Let's look for a good picture of a woman
+        process_article_images(art, image_list)
+        # If the article is classified as about a female leader, handle content summarization
+        if summarize_selected:
+            logger.info(f"Clean-summarizing '{art['title']}'")
+            art["content"] = clean_summary(body, cfg, aiclient, leader_name=art.get("leader_name"))
+        else:
+            # Keep the full fetched body
+            art["content"] = body
+    else:
+        # Let's check if the first image contains a woman.
+        process_article_images(art, image_list[:1])
+        # Handle fallback logic for image statuses
+        img_stat = art.get("most_relevant_status", "")
 
-def identify_female_leadership(art, body, cfg, gender_map, persons, stats, aiclient):
+        art["status"] = qcfg.get("fallback_image_male", qcfg["fallback"])
+        if img_stat in ("female", "female_majority", "female_prominent"):
+            art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
+            logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")
+        if art["status"] == "show-full":
+            art["content"] = clean_summary(body, cfg, aiclient) if summarize_selected else body
+        elif art["status"] == "short_summary":
+            # Generate a short summary
+            art["content"] = short_summary(body, cfg, aiclient)
+        elif art["status"] == "spin-genders":
+            # Apply gender-spin logic
+            art["content"] = spin_genders(body, cfg, aiclient)
+        else:
+            # Default to the article's description, but this article will usually be excluded anyways.
+            art["content"] = art.get("description", "")
+
+
+def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
     # 4) Analyze detected PERSON names for female associations
     female_names = [p for p in persons if gender_map.get(p) == "female"]
     has_kw = any(
@@ -390,13 +410,13 @@ def identify_female_leadership(art, body, cfg, gender_map, persons, stats, aicli
         stats["keyword_hits"] += 1
     # 5) Check if the article pertains to a female leader
     is_female_leader = False
+    leader_name = None
     if female_names and has_kw:
         try:
             is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
-            art["leader_name"] = leader_name
         except Exception as e:
             logger.warning(f"OpenAI classification error on '{art.get('title')}': {e}")
-    return is_female_leader
+    return is_female_leader, leader_name
 
 
 def process_article_images(art, image_list):
