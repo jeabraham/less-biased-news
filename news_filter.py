@@ -827,11 +827,11 @@ def render_article_to_html(article: dict, query_name: str = None) -> str:
 
         # Determine image size based on its status
         if image_status in ("female", "female_majority", "female_prominent"):
-            base = 300
+            base = 400
         elif image_status == "no_face":
             base = 200
         else:  # male or less relevant images
-            base = 100
+            base = 150
 
         # Double size if the article is about a female leader
         if article.get("status") == "female_leader":
