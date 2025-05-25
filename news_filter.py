@@ -1,4 +1,3 @@
-import os
 import yaml
 import logging
 import spacy
@@ -12,7 +11,7 @@ from ai_utils import AIUtils
 from article_fetcher import fetch_full_text_and_images
 
 from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
-from datetime import date, timedelta, datetime
+from datetime import timedelta, datetime
 import time
 
 import math
@@ -22,12 +21,12 @@ from datetime import date
 
 
 from ai_queries import (
-    truncate_for_openai,
     classify_leadership,
     short_summary,
     clean_summary,
     spin_genders,
 )
+from news_formatter import format_text, generate_html
 
 # Approximate a character→token ratio if tiktoken not available:
 APPROX_CHARS_PER_TOKEN = 4
@@ -495,7 +494,7 @@ def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
         try:
             is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
         except Exception as e:
-            logger.warning(f"OpenAI classification error on '{art.get('title')}': {e}")
+            logger.warning(f"OpenAI classification error on': {e}")
     return is_female_leader, leader_name
 
 
@@ -716,262 +715,6 @@ def gather_bodies_images_and_persons(
 
 # ─── Formatting ─────────────────────────────────────────────────────────
 
-def format_text(results: dict, metadata: dict = None) -> str:
-    """
-    Generate a text summary from the filtered news results.
-
-    Enhancements:
-    - Formats section headers more clearly and consistently.
-    - Adds query strings (metadata) below each section header, if available.
-    - Improves layout and readability with consistent indentation and markers.
-    - Avoids printing empty or useless information.
-
-    Parameters:
-    ----------
-    results : dict
-        Dictionary of results, where keys are query names and values are lists of articles.
-    metadata : dict, optional
-        A dictionary containing query-specific metadata such as query strings.
-
-    Returns:
-    --------
-    str
-        A structured and readable text output.
-    """
-    # Initialize output lines
-    lines = []
-    metadata = metadata or {}
-
-    # Iterate through the results grouped by query name
-    for name, articles in results.items():
-        # Header for section (query name)
-        lines.append("=" * 60)  # Divider line
-        lines.append(f"=== {name} ===")  # Section header
-
-        # Include query string metadata if available
-        query_string = metadata.get(name, "Unknown query")
-        lines.append(f"Query: {query_string}")
-        lines.append("-" * 60)  # Sub-divider for better readability
-
-        # Iterate through the articles in each section
-        for art in articles:
-            # Skip excluded articles
-            if art.get("status") == "exclude":
-                continue
-
-            # Extract article details
-            title = art.get("title", "No title")
-            url = art.get("url", "#")
-            status = art.get("status", "")
-            leader_name = art.get("leader_name", "")
-            if leader_name:
-                status += f" ({leader_name})"  # Append leader name to status if available
-            content = art.get("content") or art.get("description") or "[No content available]"
-
-            # Print article info
-            lines.append(f"- {title}  [{status}]")
-            lines.append(f"  Link: {url}")
-
-            # Add content in bullet-pointed paragraphs
-            for paragraph in content.split("\n\n"):
-                paragraph = paragraph.strip()
-                if paragraph:  # Avoid blank paragraphs
-                    lines.append(f"    {paragraph}")
-
-            # Add a blank line after each article for separation
-            lines.append("")
-
-        # Add a space between sections for readability
-        lines.append("")
-
-    # Join the lines into a single text output
-    return "\n".join(lines)
-
-def render_article_to_html(article: dict, query_name: str = None) -> str:
-    """
-    Render an individual article into HTML format.
-
-    Parameters:
-    ----------
-    article : dict
-        The article object containing details such as title, URL, content, images, etc.
-    query_name : str, optional
-        If provided, appends the query name to the article title for context.
-
-    Returns:
-    --------
-    str
-        A formatted HTML string representing the article.
-    """
-    html = []
-
-    # Get article details
-    title = article.get("title", "No title")
-    url = article.get("url", "#")
-    content = article.get("content") or article.get("description") or ""
-    status = article.get("status", "")
-
-    # Add leader name to the status if applicable
-    if article.get("leader_name"):
-        status += f" ({article['leader_name']})"
-
-    # Start HTML for the article
-    html.append("<li>")
-    query_display = f" <em>({query_name})</em>" if query_name else ""
-    html.append(f"  [{status}] <a href='{url}' target='_blank'>{title}</a>{query_display}")
-
-    # Include the most relevant image if available
-    if article.get("most_relevant_image"):
-        image_url = article["most_relevant_image"]
-        image_status = article.get("most_relevant_status", "")
-
-        # Determine image size based on its status
-        if image_status in ("female", "female_majority", "female_prominent"):
-            base = 400
-        elif image_status == "no_face":
-            base = 200
-        else:  # male or less relevant images
-            base = 150
-
-        # Double size if the article is about a female leader
-        if article.get("status") == "female_leader":
-            final = base * 2
-        else:
-            final = base
-
-        size_style = f"max-width:{final}px;"
-        html.append(f"  <img src='{image_url}' alt='' style='{size_style}'>")
-
-    # Process and format content into paragraphs
-    paragraphs = [
-        para.strip()
-        for block in content.split("\n\n") for para in block.split("\n") if para.strip()
-    ]
-    for para in paragraphs:
-        html.append(f"  <p>{para}</p>")
-
-    html.append("</li>")
-    return "\n".join(html)
-
-def generate_html(results: dict, metadata: dict = None) -> str:
-    """
-    Generate an enhanced HTML page from the filtered news results.
-
-    Adds a "New Today" section if applicable and organizes articles by queries.
-
-    Parameters:
-    ----------
-    results : dict
-        Dictionary of results, where keys are query names and values are lists of articles.
-    metadata : dict, optional
-        A dictionary containing additional metadata such as `query_strings`.
-
-    Returns:
-    --------
-    str
-        A complete HTML string.
-    """
-    logger.debug("Generating HTML output")
-
-    # Adding optional metadata for query strings
-    metadata = metadata or {}
-
-    # Get the current date and time
-    from datetime import datetime
-    current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # Initialize the HTML output
-    html = [
-        "<!DOCTYPE html>",
-        "<html>",
-        "  <head>",
-        "    <meta charset='utf-8'>",
-        "    <title>News</title>",
-        "    <style>",
-        "      body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0 15px; }",
-        "      h1, h2 { color: #333; }",
-        "      ul { list-style-type: disc; margin-left: 20px; }",
-        "      hr { border: 0; height: 1px; background: #ccc; margin: 20px 0; }",
-        "      .toc { margin-bottom: 20px; }",
-        "      img { float: right; margin: 0 0 1em 1em; max-width: 300px; }",
-        "      p, li { overflow: auto; }",
-        "      .toc-link { margin-top: 20px; display: block; font-size: 0.9em; }",
-        "    </style>",
-        "  </head>",
-        "  <body>"
-    ]
-
-    # Add page header with date and credit
-    html.extend([
-        "    <h1>News Summary</h1>",
-        f"    <p><strong>Date:</strong> {current_date}</p>",
-        "    <p><strong>Processed by:</strong> "
-        "<a href='https://github.com/jeabraham/less-biased-news' target='_blank'>less_biased_news</a></p>",
-        "    <hr>"
-    ])
-
-    # Gather articles tagged as "new_today"
-    new_today_articles = []
-    for query_name, articles in results.items():
-        for art in articles:
-            if art.get("new_today", False):
-                new_today_articles.append((query_name, art))  # Include the query name with each article
-
-    # Generate the Table of Contents (TOC) FIRST
-    html.append("    <div class='toc'>")
-    html.append("      <h2>Table of Contents</h2>")
-    html.append("      <ul>")
-    if new_today_articles:
-        html.append("        <li><a href='#new_today'>New Today</a></li>")  # Add "New Today" to TOC
-    for query_name in results:
-        section_id = query_name.replace(" ", "_").lower()  # Generate HTML-safe IDs
-        html.append(f"        <li><a href='#{section_id}'>{query_name}</a></li>")
-    html.append("      </ul>")
-    html.append("    </div>")
-    html.append("    <hr>")  # Separate TOC from the content
-
-    # Then add the "New Today" section if applicable
-    if new_today_articles:
-        html.append("    <section id='new_today'>")
-        html.append("      <h2>New Today</h2>")
-        html.append("      <ul>")
-        for query_name, art in new_today_articles:
-            if art.get("status") == "exclude":
-                continue  # Skip excluded articles
-            html.append(render_article_to_html(art, query_name=query_name))
-        html.append("      </ul>")
-        html.append("      <hr>")
-        html.append("    </section>")
-
-    # Add each section for query results
-    for query_name, articles in results.items():
-        section_id = query_name.replace(" ", "_").lower()  # ID for linking
-        query_string = metadata.get(query_name, "Not provided")  # Get query string from metadata
-
-        html.append(f"    <section id='{section_id}'>")
-        html.append(f"      <h2>{query_name}</h2>")
-        html.append(f"      <p><strong>Query:</strong> {query_string}</p>")
-        html.append("      <ul>")
-
-        for art in articles:
-            if art.get("status") == "exclude":
-                continue  # Skip excluded articles
-            html.append(render_article_to_html(art))  # Use the helper function here
-
-        html.append("      </ul>")
-        # Add "Table of Contents" link at the end of the section
-        html.append(
-            "      <a class='toc-link' href='#' onclick='window.scrollTo({top: 0, behavior: \"smooth\"});'>Back to Table of Contents</a>")
-        html.append("    </section>")
-        html.append("    <hr>")
-
-    # Close the HTML structure
-    html.extend([
-        "  </body>",
-        "</html>"
-    ])
-
-    return "\n".join(html)
 
 # ─── Main Entrypoint ───────────────────────────────────────────────────
 
