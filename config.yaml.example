@@ -111,6 +111,31 @@ leadership_keywords:
   - judge
   - magistrate
   - commissioner
+  - candidate
+  - nominee
+  - appointee
+  - official
+  - supervisor
+  - coordinator
+  - facilitator
+  - organizer
+  - partner
+  - co-chair
+  - provost
+  - rector
+  - headmistress
+  - premier
+  - minister
+  - sheriff
+  - chairman
+  - chairwoman
+  - treasurer
+  - chairperson
+  - trustee
+  - councillor
+  - advisor
+  - coach
+  - mediator
 
 # Define as many queries as you like:
 #   - `q`: your NewsAPI query (supports quoted phrases, +/– prefixes, AND/OR/NOT)
@@ -136,7 +161,8 @@ queries:
 
   - name: Canada
     provider: mediastack
-    q: "Canada"
+    q: "Canada,-investing,-investment,-share,-market capitalization,-earnings per share,-shares,-stock,-business.-wall streat,-stock market,-stocks,-strong-buy,-finance,-earnings,-price target,-target price,-buy rating,-sell rating"
+    categories: "-business"  # exclude business news, really we want to exclude share purchases and stock market news
     page_size: 35
     classification: true
     languages: en
