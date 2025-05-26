@@ -529,7 +529,8 @@ def get_new_today_articles(results):
     for query_name, articles in results.items():
         for art in articles:
             if art.get("new_today", False):
-                new_today_articles.append((query_name, art))  # Include the query name with each article
+                if art.get("status") != "exclude":
+                    new_today_articles.append((query_name, art))  # Include the query name with each article
     return new_today_articles
 
 

@@ -24,7 +24,7 @@ def chunk_text(text, max_chunk_size):
     return chunks
 
 
-def summarize_text(input_text, model="facebook/bart-large-cnn", max_length=130, min_length=30):
+def summarize_text_using_local_model(input_text, model="facebook/bart-large-cnn", max_length=130, min_length=30, strict=False):
     """
     Summarize the input text using the specified model and summarization settings.
 
@@ -60,6 +60,9 @@ def summarize_text(input_text, model="facebook/bart-large-cnn", max_length=130, 
 
         # Combine summarized chunks into a single output
         final_summary = " ".join(summarized_chunks)
+        if len(final_summary) > max_length and strict:
+            # If strict mode is enabled, recurse
+            final_summary = summarize_text_using_local_model(final_summary, model=model, max_length=max_length, min_length=min_length, strict=strict)
         return final_summary
 
     except Exception as e:
@@ -98,7 +101,7 @@ def main():
 
     try:
         # Generate the summary
-        final_summary = summarize_text(
+        final_summary = summarize_text_using_local_model(
             input_text,
             model=args.model,
             max_length=args.max_length,

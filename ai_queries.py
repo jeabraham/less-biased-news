@@ -5,7 +5,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenize
 
 import tiktoken
 
-from summarization import summarize_text
+from summarization import summarize_text_using_local_model
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ def short_summary(text: str, cfg: dict, ai_util) -> str:
     if ai_util.local_summarization:
         logger.debug("Using Hugging Face summarization for short summary")
         try:
-            summary = summarize_text(input_text=text, model=ai_util.local_summarization_model, max_length=130, min_length=30)
+            summary = summarize_text_using_local_model(input_text=text, model=ai_util.local_summarization_model, max_length=200, min_length=30)
         except Exception as e:
             logger.error(f"Error during Hugging Face summarization: {e}")
             return ""
