@@ -1,12 +1,23 @@
-   set bodyFile to "path/to/your/output.txt"
-   set theBody to do shell script "cat " & quoted form of bodyFile
-   set theRecipient to "john@theabrahams.ca"
+on run {recipientEmail, emailSubject, bodyFilePath, senderEmail}
+    -- Read the email body from the file
+    set theBody to do shell script "cat " & quoted form of bodyFilePath
 
-   tell application "Mail"
-       set theSubject to "News for " & (do shell script "date +%Y-%m-%d")
-       set newMessage to make new outgoing message with properties {subject:theSubject, content:theBody, visible:true}
-       tell newMessage
-           make new to recipient at end of to recipients with properties {address:theRecipient}
-           send
-       end tell
-   end tell
+    tell application "Mail"
+        -- Create a new email
+        set newMessage to make new outgoing message with properties {subject:emailSubject, visible:true}
+
+        -- Set the recipient
+        tell newMessage
+            make new to recipient at end of to recipients with properties {address:recipientEmail}
+            set content to theBody
+        end tell
+
+        end tell
+
+        -- Set the sender email address
+        set newMessage's sender to senderEmail
+
+        -- Send the email
+        send newMessage
+    end tell
+end run
