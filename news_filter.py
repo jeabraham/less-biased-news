@@ -164,6 +164,8 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
         params["keywords"] = keywords
     if qcfg.get("countries"):
         params["countries"] = qcfg.get("countries")
+    if qcfg.get("categories"):
+        params["categories"] = qcfg.get("categories")
     if qcfg.get("languages"):  # Support for languages parameter
         params["languages"] = qcfg.get("languages")  # Add languages to params
 
