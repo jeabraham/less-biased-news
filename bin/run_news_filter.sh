@@ -10,15 +10,14 @@ source ./venv/bin/activate
 OUT="news_$(date +%Y-%m-%d).html"
 
 # Run the script
-python news_filter.py --format html --output "output/$OUT" --new-today --log INFO
+# python news_filter.py --format html --output "output/$OUT" --new-today --log INFO
 
 # Open in default browser
 open "output/$OUT"
 
-OUTEMAIL="news_$(date +%Y-%m-%d)_email.html"
+# OUTEMAIL="news_$(date +%Y-%m-%d)_email.html"
 
 # Build the email file
-python news_formatter.py --format email  > "output/$OUTEMAIL"
+# python news_formatter.py --format email  > "output/$OUTEMAIL"
 
-# Send the email
-python send_mail.py --subject "Less biased news for $(date +%Y-%m-%d)" --recipient john@theabrahams.ca --sender deborah_abraham@icloud.com --html-file "output/$OUTEMAIL" --password zsyk-qxdb-uimw-hiei --smtp-server smtp.mail.me.com --smtp-port 587
+ rsync -a --delete "output/" jea@fw-1.office.hbaspecto.com:/var/www/other-web/www-deliriumspb-com/html/johns_playground/
