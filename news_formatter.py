@@ -121,20 +121,12 @@ def generate_email(results: dict) -> str:
         f"    <h1 style='color: #333;'>News Summary - {current_date}</h1>"
     ]
 
-    new_today_exists = False
-
-    for articles in results.values():
-        for article in articles:
-            if article.get("status") != "exclude" and article.get("new_today", True):
-                new_today_exists = True
-                break
-        if new_today_exists:
-            break
+    new_today_articles = get_new_today_articles(results)
 
     # Build the "Table of Contents"
     email_html.append("<h2>Table of Contents</h2>")
     email_html.append("<ul>")
-    if new_today_exists:
+    if new_today_articles:
         email_html.append("<li><a href='#new_today'>New Today</a></li>")
     for query_name in results.keys():
         email_html.append(f"<li><a href='#{query_name}'>{query_name}</a></li>")
@@ -142,18 +134,12 @@ def generate_email(results: dict) -> str:
 
 
     # Add the "New Today" section
-    new_today_articles = [
-        article
-        for articles in results.values()
-        for article in articles
-        if article.get("status") != "exclude" and article.get("new_today", True)
-    ]
     if  new_today_articles:
         email_html.append("<hr>")  # Horizontal rule for better separation
         email_html.append("<h2 id='new_today' style='color: #cc0000;'>New Today</h2>")
         email_html.append("<ul>")
-        for article in new_today_articles:
-            email_html.append(render_article_to_email(article))
+        for query_name, article in new_today_articles:
+            email_html.append(render_article_to_email(article, query_name=query_name))
         email_html.append("</ul>")
         email_html.append("<div class='back-to-toc'><a href='#'>Back to Table of Contents</a></div>")
 
@@ -356,6 +342,10 @@ def render_article_to_email(article: dict, query_name: str = None) -> str:
     content = article.get("content") or article.get("description", "Content not available.")
     status = article.get("status", "")
 
+    # Add leader name to the status if applicable
+    if article.get("leader_name"):
+        status += f" ({article['leader_name']})"
+
     if FIRST_ARTICLE:
         logger.info(f"Article title: {title}")
         logger.info(f"Article Status: {status}")
@@ -364,7 +354,7 @@ def render_article_to_email(article: dict, query_name: str = None) -> str:
     # Start rendering the article with updated styles
     html.append("<tr>")
     html.append(f"  <td>")
-    html.append(f"    <strong style='font-size: 18px; color: #333;'>[{status}]</strong><br>")
+    html.append(f"    <strong style='font-size: 18px; color: #333;'>{status}</strong><br>")
     html.append(
         f"    <a href='{url}' style='font-size: 20px; font-weight: bold; color: #1a0dab; text-decoration: none;'>{title}</a>")
     if query_name:
@@ -475,11 +465,7 @@ def generate_html(results: dict, metadata: dict = None) -> str:
     ])
 
     # Gather articles tagged as "new_today"
-    new_today_articles = []
-    for query_name, articles in results.items():
-        for art in articles:
-            if art.get("new_today", False):
-                new_today_articles.append((query_name, art))  # Include the query name with each article
+    new_today_articles = get_new_today_articles(results)
 
     # Generate the Table of Contents (TOC) FIRST
     html.append("    <div class='toc'>")
@@ -536,6 +522,15 @@ def generate_html(results: dict, metadata: dict = None) -> str:
     ])
 
     return "\n".join(html)
+
+
+def get_new_today_articles(results):
+    new_today_articles = []
+    for query_name, articles in results.items():
+        for art in articles:
+            if art.get("new_today", False):
+                new_today_articles.append((query_name, art))  # Include the query name with each article
+    return new_today_articles
 
 
 def main():
