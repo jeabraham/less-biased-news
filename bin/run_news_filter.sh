@@ -21,4 +21,4 @@ OUTEMAIL="news_$(date +%Y-%m-%d)_email.html"
 python news_formatter.py --format email --output "output/$OUTEMAIL" > "output/$OUTEMAIL"
 
 # Send the email
-python send_mail.py --subject "Less biased news for $(date +%Y-%m-%d)" --to john@theabrahams.ca --sender deborah_abraham@icloud.com --html-file "output/$OUTEMAIL" --password zsyk-qxdb-uimw-hiei --smtp-server smtp.mail.me.com --smtp-port 587
+python send_mail.py --subject "Less biased news for $(date +%Y-%m-%d)" --recipient john@theabrahams.ca --sender deborah_abraham@icloud.com --html-file "output/$OUTEMAIL" --password zsyk-qxdb-uimw-hiei --smtp-server smtp.mail.me.com --smtp-port 587
