@@ -1,9 +1,12 @@
-on run {recipientEmail, emailSubject, bodyFilePath, senderEmail}
+on run {recipientEmail, emailSubject, bodyFilePath, senderEmail, shouldAttach}
+
     -- Log input values for debugging
     log "Recipient Email: " & recipientEmail
     log "Email Subject: " & emailSubject
     log "HTML File Path: " & bodyFilePath
     log "Sender Email: " & senderEmail
+    log "Should Attach File: " & shouldAttach
+
 
     -- Convert Unix-style path to AppleScript path
     set filePathAsAlias to POSIX file bodyFilePath as alias

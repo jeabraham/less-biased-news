@@ -20,4 +20,14 @@ open "output/$OUT"
 # Build the email file
 # python news_formatter.py --format email  > "output/$OUTEMAIL"
 
- rsync -a --delete "output/" jea@fw-1.office.hbaspecto.com:/var/www/other-web/www-deliriumspb-com/html/johns_playground/
+rsync -a --delete "output/" jea@fw-1.office.hbaspecto.com:/var/www/other-web/www-deliriumspb-com/html/johns_playground/
+
+# Create a text file with cat:
+cat <<EOF > simple_email.txt
+You can view your news for today here:
+
+https://www.deliriumspb.com/johns_playground/$(basename "$OUT")
+
+EOF
+
+osascript send_email/send_email.applescript john@theabrahams.ca "News Today $OUT" simple_email.txt john@theabrahams.ca True
