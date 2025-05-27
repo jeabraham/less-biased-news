@@ -6,6 +6,8 @@ from genderize import Genderize, GenderizeException
 
 import argparse
 import requests
+import urllib.parse
+
 
 from ai_utils import AIUtils
 from article_fetcher import fetch_full_text_and_images
@@ -120,6 +122,40 @@ def fetch_pause(provider_name: str, cfg: dict, delay_key: str = "delay"):
     # Update the last call time to now
     provider_last_call[provider_name] = datetime.now()
 
+
+def create_curl_command(url, params):
+    """
+    Create a curl command from the URL and parameters that can be used for debugging.
+    Masks the API key partially for security.
+    """
+    # Create a copy of params to avoid modifying the original
+    safe_params = params.copy()
+
+    # Mask the API key for security (show only first 8 and last 4 chars)
+    if "access_key" in safe_params and len(safe_params["access_key"]) > 12:
+        key = safe_params["access_key"]
+        masked_key = key[:8] + "..." + key[-4:]
+        safe_params["access_key"] = masked_key
+
+    # URL encode parameters
+    param_strings = []
+    for key, value in safe_params.items():
+        encoded_value = urllib.parse.quote(str(value))
+        param_strings.append(f"{key}={encoded_value}")
+
+    # Construct the full URL with parameters
+    url_with_params = f"{url}?{'&'.join(param_strings)}"
+
+    # Create the curl command
+    curl_cmd = f"curl -X GET '{url_with_params}'"
+
+    # Add note about the masked API key
+    if "access_key" in safe_params and "..." in safe_params["access_key"]:
+        curl_cmd += "\n# Note: API key has been partially masked for security. Replace with your full key."
+
+    return curl_cmd
+
+
 def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: str = "cache") -> list:
     """
     Fetch articles from Mediastack, or if use_cache=True and a cached file exists,
@@ -148,12 +184,12 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
 
     base_url = cfg["mediastack"].get("base_url")
     raw_kw = qcfg.get("q")
-    keywords = ",".join(raw_kw) if isinstance(raw_kw,list) else (raw_kw or "")
-    params = {"access_key":cfg["mediastack"]["access_key"],"limit":qcfg.get("page_size",100)}
+    keywords = ",".join(raw_kw) if isinstance(raw_kw, list) else (raw_kw or "")
+    params = {"access_key": cfg["mediastack"]["access_key"], "limit": qcfg.get("page_size", 100)}
 
     # Determine history_days (per-query override or global default)
     history = qcfg.get("history_days",
-               cfg["mediastack"].get("default_history_days", None))
+                       cfg["mediastack"].get("default_history_days", None))
     if history:
         end = date.today().isoformat()
         start = (date.today() - timedelta(days=history)).isoformat()
@@ -174,9 +210,32 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
         resp = requests.get(base_url, params=params, timeout=10)
         logger.debug(f"Mediastack request URL: {resp.url}")
         resp.raise_for_status()
-        articles = resp.json().get("data",[])
+
+        data = resp.json()
+        articles = data.get("data", [])
+
         if not articles:
-            logger.error(f"Mediastack returned zero articles with params: {params}")
+            # Create a curl command that users can run to debug
+            curl_cmd = create_curl_command(base_url, params)
+
+            # Log error with parameters and curl command
+            logger.error(
+                f"Mediastack returned zero articles with params: {params}\n"
+                f"Try running this curl command to debug:\n{curl_cmd}"
+            )
+
+            # Log metadata if available
+            if "pagination" in data:
+                logger.info(f"Response metadata: pagination={data['pagination']}")
+
+            # Additional info about possible reasons
+            logger.info(
+                "Possible reasons for zero results:\n"
+                "1. API key might be invalid or expired\n"
+                "2. Query might be too restrictive\n"
+                "3. Rate limit might be exceeded\n"
+                "4. API service might be experiencing issues"
+            )
         else:
             try:
                 with open(cache_file, "w", encoding="utf-8") as f:
@@ -185,9 +244,15 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
             except Exception as e:
                 logger.warning(f"Failed to write cache file {cache_file}: {e}")
             logger.info(f"Fetched {len(articles)} articles from Mediastack")
+
         return articles
     except Exception as e:
         logger.error(f"Mediastack fetch failed: {e}")
+
+        # Add curl command for debugging the failed request
+        curl_cmd = create_curl_command(base_url, params)
+        logger.error(f"Failed request details - try this curl command:\n{curl_cmd}")
+
         return []
 
 def get_cache_file_paths(query_name: str) -> tuple:

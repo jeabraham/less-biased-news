@@ -163,7 +163,7 @@ queries:
 
   - name: Canada
     provider: mediastack
-    q: "Canada,-investing,-investment,-share,-market capitalization,-earnings per share,-shares,-stock,-business.-wall street,-stock market,-stocks,-strong-buy,-finance,-earnings,-price target,-target price,-buy rating,-sell rating,-Royal Bank of Canada,-banking,-www.americanbankingnews.com"
+    q: "Canada,-investing,-investment,-share,-market capitalization,-earnings per share,-shares,-stock,-business.-wall street,-stock market,-stocks,-strong-buy,-finance,-earnings,-price target,-target price,-www.americanbankingnews.com,-banking"
     categories: "-business"  # exclude business news, really we want to exclude share purchases and stock market news
     page_size: 35
     classification: true
