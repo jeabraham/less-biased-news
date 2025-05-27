@@ -11,6 +11,8 @@ mediastack:
 openai:
   api_key: "sk-proj--"
   model: "gpt-4"
+  complex_model: "gpt-4" # used for spin_genders and clean_summary
+  simple_model: "gpt-3.5-turbo"  # used for short_summary (although check local_summarization as well) and classification
   max_tokens: 16000
   temperature: 0.1
 # Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
@@ -161,7 +163,7 @@ queries:
 
   - name: Canada
     provider: mediastack
-    q: "Canada,-investing,-investment,-share,-market capitalization,-earnings per share,-shares,-stock,-business.-wall streat,-stock market,-stocks,-strong-buy,-finance,-earnings,-price target,-target price,-buy rating,-sell rating"
+    q: "Canada,-investing,-investment,-share,-market capitalization,-earnings per share,-shares,-stock,-business.-wall street,-stock market,-stocks,-strong-buy,-finance,-earnings,-price target,-target price,-buy rating,-sell rating,-Royal Bank of Canada,-banking,-www.americanbankingnews.com"
     categories: "-business"  # exclude business news, really we want to exclude share purchases and stock market news
     page_size: 35
     classification: true

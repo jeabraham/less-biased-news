@@ -357,7 +357,6 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         provider = qcfg.get("provider", "newsapi").lower()
         if provider == "mediastack":
             raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
-            logger.info(f"Fetched {len(raw_articles)} articles from Mediastack")
         else:
             raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
 

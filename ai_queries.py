@@ -2,13 +2,17 @@
 import logging
 import string
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer
+import time
+import random
+import re
+import logging
 
+logger = logging.getLogger(__name__)
 import tiktoken
 
 from summarization import summarize_text_using_local_model
 
 logger = logging.getLogger(__name__)
-
 
 def truncate_for_openai(
     prompt: str,
@@ -58,31 +62,61 @@ def truncate_for_openai(
     return tokenizer.decode(truncated)
 
 
-def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, tokenizer: PreTrainedTokenizer) -> str:
+
+def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, tokenizer: PreTrainedTokenizer, complex: bool = False) -> str:
     """
     Call the OpenAI API for generating a response based on the given prompt and text.
+    Includes retry logic with exponential backoff for rate limit errors.
     """
-    model = cfg["openai"]["model"]
+    model = cfg["openai"].get("model", "gpt-3.5-turbo")
+    if complex:
+        model = cfg["openai"].get("complex_model", model)
+    else:
+        model = cfg["openai"].get("simple_model", model)
     max_toks = cfg["openai"]["max_tokens"]
     temp = cfg["openai"].get("temperature", 0)
+    max_retries = 3  # Maximum number of retry attempts
+    base_delay = 1.0  # Base delay in seconds before retrying
 
     safe_text = truncate_for_openai(prompt, text, max_tokens=max_toks - return_tokens, tokenizer=tokenizer)
     prompt_plus_text = prompt + "\n\n" + safe_text
     logger.debug("Running OpenAI call")
 
-    try:
-        resp = client.ChatCompletion.create(
-            model=model,
-            temperature=temp,
-            max_tokens=return_tokens,
-            messages=[{"role": "user", "content": prompt_plus_text}]
-        )
-        answer = resp.choices[0].message.content.strip()
-        logger.debug(f"OpenAI result: {answer}")
-        return answer
-    except Exception as e:
-        logger.warning(f"OpenAI API error: {e}")
-        return ""
+    for attempt in range(max_retries + 1):
+        try:
+            resp = client.ChatCompletion.create(
+                model=model,
+                temperature=temp,
+                max_tokens=return_tokens,
+                messages=[{"role": "user", "content": prompt_plus_text}]
+            )
+            answer = resp.choices[0].message.content.strip()
+            logger.debug(f"OpenAI result: {answer}")
+            return answer
+        except Exception as e:
+            error_message = str(e)
+
+            # Check if this is a rate limit error
+            if "rate_limit" in error_message.lower() and attempt < max_retries:
+                # Extract wait time if available in the error message
+                wait_time = None
+                time_match = re.search(r"Please try again in (\d+\.\d+)s", error_message)
+                if time_match:
+                    wait_time = float(time_match.group(1))
+                    # Add a small buffer to ensure we're past the rate limit window
+                    wait_time += 0.5
+                else:
+                    # Exponential backoff with jitter
+                    wait_time = base_delay * (2 ** attempt) * (0.5 + 0.5 * random.random())
+
+                logger.warning(
+                    f"OpenAI API rate limit exceeded. Retrying in {wait_time:.2f}s... (Attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+            else:
+                # For non-rate limit errors or if we've exhausted retries
+                logger.warning(f"OpenAI API error: {e}")
+                return ""  # Return empty string after all retries failed
+
 
 def run_local_call(
     prompt: str,
@@ -149,7 +183,10 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
     elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for classification")
         result = open_ai_call(
-            cfg["prompts"]["classification"], text, 10, cfg, ai_util.openai_client, ai_util.openai_tokenizer,
+            cfg["prompts"]["classification"], text, 10, cfg,
+            ai_util.openai_client,
+            ai_util.openai_tokenizer,
+            complex=False,
         )
     else:
         logger.debug("Failed classification classification")
@@ -193,6 +230,14 @@ def short_summary(text: str, cfg: dict, ai_util) -> str:
         summary = open_ai_call(
             cfg["prompts"].get("short_summary", ""), text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer
         )
+        if summary == "":
+            logger.debug("OpenAI returned an empty summary, trying fallback")
+            try:
+                summary = summarize_text_using_local_model(input_text=text, model=ai_util.local_summarization_model,
+                                                           max_length=200, min_length=30)
+            except Exception as e:
+                logger.error(f"Error during Hugging Face summarization: {e}")
+                return ""
     else:
         logger.debug("Failed to generate short summary: No available summarization method")
         return ""
@@ -231,7 +276,15 @@ def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str
         cleaned_summary = run_local_call(prompt, text, 500, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
     elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for clean summary")
-        cleaned_summary = open_ai_call(prompt, text, 4000, cfg, ai_util.openai_client, ai_util.openai_tokenizer,)
+        cleaned_summary = open_ai_call(
+            prompt,
+            text,
+            4000,
+            cfg,
+            ai_util.openai_client,
+            ai_util.openai_tokenizer,
+            complex=True,
+        )
     else:
         logger.debug("Failed clean summary")
         return text
@@ -253,10 +306,16 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
     elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for gender spinning")
         spun_result = open_ai_call(
-            cfg["prompts"]["spin_genders"], text, 4000, cfg, ai_util.openai_client, ai_util.openai_tokenizer,
+            cfg["prompts"]["spin_genders"],
+            text,
+            4000,
+            cfg,
+            ai_util.openai_client,
+            ai_util.openai_tokenizer,
+            complex=True,
         )
     else:
-        logger.debug("Failed sping genders")
+        logger.debug("Failed spin_genders")
         return text
 
     logger.info("Received spin_genders rewrite")
