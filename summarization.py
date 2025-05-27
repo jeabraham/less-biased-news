@@ -2,6 +2,19 @@ import sys
 import argparse
 from transformers import pipeline
 
+# Add at the top of summarization.py
+import logging
+
+# Create a logger for this module
+logger = logging.getLogger(__name__)
+
+# Set a default handler if none exists
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 def chunk_text(text, max_chunk_size):
     """
@@ -54,25 +67,30 @@ def summarize_text_using_local_model(input_text, model="facebook/bart-large-cnn"
         input_token_count = len(input_text) // 4
 
         # Dynamically adjust max_length based on input length
-        # For very short inputs, we want an even shorter summary
-        adjusted_max_length = max_length
-        if input_token_count < max_length:
-            # If input is shorter than the default max_length, make summary even shorter
-            # Using a ratio of approximately 1/2 for summarization
-            adjusted_max_length = max(min_length, input_token_count // 2)
-            logger.debug(f"Input length ({input_token_count} tokens) is less than max_length ({max_length}). "
-                         f"Adjusted max_length to {adjusted_max_length} tokens.")
+        # For summarization, output should be shorter than input
+        # Use a ratio of approximately 1/2 for summarization
+        adjusted_max_length = min(max_length, input_token_count // 2)
+
+        # Make sure we don't go below the minimum length
+        adjusted_max_length = max(min_length, adjusted_max_length)
+
+        logger.debug(f"Input length ~{input_token_count} tokens. Set max_length to {adjusted_max_length} tokens.")
 
         # Ensure min_length is always less than or equal to adjusted_max_length
-        adjusted_min_length = min(min_length, adjusted_max_length - 10)
+        adjusted_min_length = min(min_length, adjusted_max_length - 5)
 
         # Summarize each chunk and combine the results
         summarized_chunks = []
         for chunk in chunks:
+            # For very short chunks, further adjust the max_length
+            chunk_token_count = len(chunk) // 4
+            chunk_max_length = min(adjusted_max_length, max(min_length, chunk_token_count // 3))
+            chunk_min_length = min(adjusted_min_length, max(10, chunk_max_length // 2))
+
             summary = summarizer(
                 chunk,
-                max_length=adjusted_max_length,  # Using adjusted maximum output length
-                min_length=adjusted_min_length,  # Using adjusted minimum output length
+                max_length=chunk_max_length,
+                min_length=chunk_min_length,
                 do_sample=False  # Consistent, deterministic output
             )
             summarized_chunks.append(summary[0]["summary_text"])

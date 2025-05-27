@@ -169,16 +169,9 @@ def generate_email(results: dict) -> str:
 
 
 
-
-def format_text(results: dict, metadata: dict = None) -> str:
+def format_text(results: dict, metadata: dict = None, for_email: bool = True) -> str:
     """
-    Generate a text summary from the filtered news results.
-
-    Enhancements:
-    - Formats section headers more clearly and consistently.
-    - Adds query strings (metadata) below each section header, if available.
-    - Improves layout and readability with consistent indentation and markers.
-    - Avoids printing empty or useless information.
+    Generate a text summary from the filtered news results, optimized for email readability.
 
     Parameters:
     ----------
@@ -186,57 +179,135 @@ def format_text(results: dict, metadata: dict = None) -> str:
         Dictionary of results, where keys are query names and values are lists of articles.
     metadata : dict, optional
         A dictionary containing query-specific metadata such as query strings.
+    for_email : bool, optional
+        Whether to format specifically for email (more concise, with special formatting).
 
     Returns:
     --------
     str
-        A structured and readable text output.
+        A structured and readable text output optimized for email viewing.
     """
     # Initialize output lines
     lines = []
     metadata = metadata or {}
 
+    # Add email header if for_email is True
+    if for_email:
+        current_date = datetime.now().strftime("%A, %B %d, %Y")
+        lines.append(f"NEWS SUMMARY - {current_date}")
+        lines.append("")
+        lines.append("This is an automated summary of recent news articles.")
+        lines.append("")
+
+    # Track total articles for summary
+    total_articles = sum(len([a for a in articles if a.get("status") != "exclude"])
+                         for articles in results.values())
+
+    # Add a brief overview if for_email is True
+    if for_email and total_articles > 0:
+        topic_count = len(results)
+        lines.append(f"OVERVIEW: {total_articles} articles across {topic_count} topics")
+        lines.append("")
+
     # Iterate through the results grouped by query name
     for name, articles in results.items():
-        # Header for section (query name)
-        lines.append("=" * 60)  # Divider line
-        lines.append(f"=== {name} ===")  # Section header
+        # Filter out excluded articles
+        valid_articles = [a for a in articles if a.get("status") != "exclude"]
 
-        # Include query string metadata if available
-        query_string = metadata.get(name, "Unknown query")
-        lines.append(f"Query: {query_string}")
-        lines.append("-" * 60)  # Sub-divider for better readability
+        # Skip empty sections
+        if not valid_articles:
+            continue
+
+        # Header for section (query name)
+        if for_email:
+            lines.append(f"## {name.upper()} ({len(valid_articles)} articles) ##")
+        else:
+            lines.append("=" * 60)  # Divider line
+            lines.append(f"=== {name} ===")  # Section header
+
+        # Include query string metadata if available and not in email mode
+        if not for_email:
+            query_string = metadata.get(name, "Unknown query")
+            lines.append(f"Query: {query_string}")
+            lines.append("-" * 60)  # Sub-divider for better readability
 
         # Iterate through the articles in each section
-        for art in articles:
-            # Skip excluded articles
-            if art.get("status") == "exclude":
-                continue
-
+        for i, art in enumerate(valid_articles, 1):
             # Extract article details
             title = art.get("title", "No title")
             url = art.get("url", "#")
-            status = art.get("status", "")
-            leader_name = art.get("leader_name", "")
-            if leader_name:
-                status += f" ({leader_name})"  # Append leader name to status if available
+            source = art.get("source", "")
+            published = art.get("published_at", "")
+
+            # Format the date if available
+            date_str = ""
+            if published:
+                try:
+                    # Try to parse the date and format it nicely
+                    dt = datetime.fromisoformat(published.replace('Z', '+00:00'))
+                    date_str = dt.strftime("%b %d")
+                except (ValueError, TypeError):
+                    # If parsing fails, use the raw string
+                    date_str = published
+
+            # Combine source and date
+            source_date = []
+            if source:
+                source_date.append(source)
+            if date_str:
+                source_date.append(date_str)
+
+            source_date_str = " | ".join(source_date)
+
+            # Get content
             content = art.get("content") or art.get("description") or "[No content available]"
 
-            # Print article info
-            lines.append(f"- {title}  [{status}]")
-            lines.append(f"  Link: {url}")
+            # For email, keep summaries brief
+            if for_email and len(content) > 500:
+                content = content[:497] + "..."
 
-            # Add content in bullet-pointed paragraphs
-            for paragraph in content.split("\n\n"):
-                paragraph = paragraph.strip()
-                if paragraph:  # Avoid blank paragraphs
-                    lines.append(f"    {paragraph}")
+            # Format article for email
+            if for_email:
+                lines.append(f"{i}. {title}")
+                if source_date_str:
+                    lines.append(f"   {source_date_str}")
+                lines.append(f"   {url}")
 
-            # Add a blank line after each article for separation
-            lines.append("")
+                # Add content as indented paragraph
+                content_lines = textwrap.wrap(content, width=70)
+                for line in content_lines:
+                    lines.append(f"   {line}")
 
-        # Add a space between sections for readability
+                # Add space between articles
+                lines.append("")
+            else:
+                # Original format
+                status = art.get("status", "")
+                leader_name = art.get("leader_name", "")
+                if leader_name:
+                    status += f" ({leader_name})"
+
+                lines.append(f"- {title}  [{status}]")
+                lines.append(f"  Link: {url}")
+
+                # Add content in bullet-pointed paragraphs
+                for paragraph in content.split("\n\n"):
+                    paragraph = paragraph.strip()
+                    if paragraph:  # Avoid blank paragraphs
+                        lines.append(f"    {paragraph}")
+
+                # Add a blank line after each article for separation
+                lines.append("")
+
+        # Add a separator between sections
+        if for_email:
+            lines.append("-" * 40)
         lines.append("")
+
+    # Add footer for email
+    if for_email and total_articles > 0:
+        lines.append("")
+        lines.append("Generated by News Summarizer | " + datetime.now().strftime("%Y-%m-%d %H:%M"))
 
     # Join the lines into a single text output
     return "\n".join(lines)
@@ -533,31 +604,149 @@ def get_new_today_articles(results):
                     new_today_articles.append((query_name, art))  # Include the query name with each article
     return new_today_articles
 
-
 def main():
-    parser = argparse.ArgumentParser(description="News Formatter")
-    parser.add_argument('--format', choices=['email', 'html'], default='email',
-                        help="Output format: 'email' (default) or 'html'")
+    """
+    Main function to run the news formatter with command line arguments.
+    """
+    parser = argparse.ArgumentParser(description="News Formatter - Generates formatted news summaries")
+
+    # Format options
+    parser.add_argument('--format', choices=['email', 'html', 'text'], default='email',
+                        help="Output format: 'email' (default email-friendly text), 'text' (detailed text), or 'html'")
+
+    # Content selection options
     parser.add_argument('--queries', nargs='+', help="List of query names to include, e.g., 'Calgary Canada'")
+    parser.add_argument('--limit', type=int, default=None,
+                        help="Maximum number of articles per query (default: all)")
+
+    # Output options
+    parser.add_argument('--output', '-o', type=str, help="Output file path (default: stdout)")
+    parser.add_argument('--title', type=str, default="News Summary",
+                        help="Title for the summary (used in email and HTML formats)")
+
+    # Testing options
+    parser.add_argument('--test', action='store_true', help="Use sample data for testing")
+    parser.add_argument('--summarize', action='store_true',
+                        help="Summarize article content (requires additional dependencies)")
+
     args = parser.parse_args()
 
-    query_files = find_query_files(args.queries)
+    # Handle test mode with sample data
+    if args.test:
+        logger.info("Using sample data for testing")
+        results = generate_sample_data()
+    else:
+        # Find and load real query files
+        query_files = find_query_files(args.queries)
 
-    if not query_files:
-        logger.error("No cache files found. Exiting.")
-        return
+        if not query_files:
+            logger.error("No cache files found. Exiting.")
+            return
 
-    results = {}
-    for query_name, file_path in query_files.items():
-        data = load_json(file_path)
-        if data:
-            results[query_name] = data.get('articles', [])
-        else:
-            logger.warning(f"Failed to load data from {file_path}")
+        # Load data from files
+        results = {}
+        metadata = {}
+        for query_name, file_path in query_files.items():
+            data = load_json(file_path)
+            if data:
+                articles = data.get('articles', [])
 
-    output = generate_email(results) if args.format == 'email' else generate_html(results)
-    print(output)
+                # Apply article limit if specified
+                if args.limit and args.limit > 0:
+                    articles = articles[:args.limit]
+
+                results[query_name] = articles
+
+                # Store query metadata
+                metadata[query_name] = data.get('query_string', '')
+            else:
+                logger.warning(f"Failed to load data from {file_path}")
+
+    # Apply content summarization if requested
+    if args.summarize:
+        try:
+            from summarization import summarize_text_using_local_model
+            logger.info("Applying text summarization to article content")
+
+            for query_name, articles in results.items():
+                for article in articles:
+                    if content := article.get('content'):
+                        # Estimate input length and adjust max_length accordingly
+                        input_length = len(content) // 4  # rough token estimation
+                        max_length = min(130, max(30, input_length // 2))
+
+                        article['original_content'] = content
+                        article['content'] = summarize_text_using_local_model(
+                            content,
+                            max_length=max_length,
+                            min_length=min(30, max_length - 10)
+                        )
+        except ImportError:
+            logger.warning("Summarization requested but summarization module not available")
+
+    # Generate output based on format
+    if args.format == 'email':
+        output = format_text(results, metadata, for_email=True)
+    elif args.format == 'text':
+        output = format_text(results, metadata, for_email=False)
+    elif args.format == 'html':
+        output = generate_html(results, title=args.title)
+    else:
+        output = "Invalid format specified"
+
+    # Write output to file or print to stdout
+    if args.output:
+        with open(args.output, 'w', encoding='utf-8') as f:
+            f.write(output)
+        logger.info(f"Output written to {args.output}")
+    else:
+        print(output)
+
+
+def generate_sample_data():
+    """Generate sample data for testing the formatter"""
+    return {
+        "Technology News": [
+            {
+                "title": "New AI Breakthrough in Natural Language Processing",
+                "url": "https://example.com/ai-news",
+                "source": "Tech Daily",
+                "published_at": "2023-05-27T10:30:00Z",
+                "content": "Researchers have announced a significant breakthrough in natural language processing. "
+                           "The new model achieves state-of-the-art results on multiple benchmarks while using "
+                           "30% fewer parameters than previous models. This development could lead to more "
+                           "efficient AI systems that require less computational resources to train and run.",
+                "status": "include"
+            },
+            {
+                "title": "Quantum Computing Reaches New Milestone",
+                "url": "https://example.com/quantum-news",
+                "source": "Science Today",
+                "published_at": "2023-05-26T14:15:00Z",
+                "content": "Scientists have successfully demonstrated quantum entanglement across a record distance "
+                           "of 100 kilometers using a new fiber optic technology. This achievement brings us one step "
+                           "closer to a functional quantum internet, which would revolutionize secure communications "
+                           "and distributed computing capabilities.",
+                "status": "include"
+            }
+        ],
+        "Climate Change": [
+            {
+                "title": "Global CO2 Levels Reach New High Despite Reduction Efforts",
+                "url": "https://example.com/climate-news",
+                "source": "Environmental Report",
+                "published_at": "2023-05-25T09:45:00Z",
+                "content": "Atmospheric carbon dioxide levels have reached 420 parts per million for the first time "
+                           "in recorded history, according to measurements from the Mauna Loa Observatory. This represents "
+                           "a 50% increase since pre-industrial times and continues the upward trend despite international "
+                           "efforts to reduce emissions. Scientists warn that more aggressive action is needed to avoid "
+                           "the worst impacts of climate change.",
+                "status": "include"
+            }
+        ]
+    }
 
 
 if __name__ == "__main__":
+    setup_logging()
     main()
