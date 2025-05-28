@@ -2,6 +2,7 @@ import os
 import json
 import argparse
 from datetime import datetime
+import textwrap
 
 
 def setup_logging():
@@ -81,7 +82,7 @@ def find_query_files(queries=None, cache_dir="cache"):
     return cache_files
 
 
-def generate_email(results: dict) -> str:
+def generate_email_friendly_html(results: dict) -> str:
     """
     Generate email-friendly HTML for filtered news results, including a "New Today" section,
     a table of contents, and "Back to Table of Contents" links.
@@ -169,7 +170,7 @@ def generate_email(results: dict) -> str:
 
 
 
-def format_text(results: dict, metadata: dict = None, for_email: bool = True) -> str:
+def generate_text(results: dict, metadata: dict = None, for_email: bool = True) -> str:
     """
     Generate a text summary from the filtered news results, optimized for email readability.
 
@@ -209,6 +210,23 @@ def format_text(results: dict, metadata: dict = None, for_email: bool = True) ->
         lines.append(f"OVERVIEW: {total_articles} articles across {topic_count} topics")
         lines.append("")
 
+    # Add "New Today" section first if there are any new articles
+    new_today_articles = get_new_today_articles(results)
+    if new_today_articles:
+        if for_email:
+            lines.append(f"## NEW TODAY ##")
+        else:
+            lines.append("=" * 60)  # Divider line
+            lines.append(f"=== NEW TODAY ===")  # Section header
+            lines.append("-" * 60)  # Sub-divider for better readability
+            lines.append("")
+
+        for query_name, art in new_today_articles:
+            process_article_in_text(art, for_email, -1, lines, section=query_name)
+            lines.append("")
+        lines.append("-" * 40)
+        lines.append("")
+
     # Iterate through the results grouped by query name
     for name, articles in results.items():
         # Filter out excluded articles
@@ -227,77 +245,16 @@ def format_text(results: dict, metadata: dict = None, for_email: bool = True) ->
 
         # Include query string metadata if available and not in email mode
         if not for_email:
-            query_string = metadata.get(name, "Unknown query")
-            lines.append(f"Query: {query_string}")
+            query_string = metadata.get(name, "")
+            if query_string and query_string!= "":
+                lines.append(f"Query: {query_string}")
             lines.append("-" * 60)  # Sub-divider for better readability
 
         # Iterate through the articles in each section
         for i, art in enumerate(valid_articles, 1):
-            # Extract article details
-            title = art.get("title", "No title")
-            url = art.get("url", "#")
-            source = art.get("source", "")
-            published = art.get("published_at", "")
-
-            # Format the date if available
-            date_str = ""
-            if published:
-                try:
-                    # Try to parse the date and format it nicely
-                    dt = datetime.fromisoformat(published.replace('Z', '+00:00'))
-                    date_str = dt.strftime("%b %d")
-                except (ValueError, TypeError):
-                    # If parsing fails, use the raw string
-                    date_str = published
-
-            # Combine source and date
-            source_date = []
-            if source:
-                source_date.append(source)
-            if date_str:
-                source_date.append(date_str)
-
-            source_date_str = " | ".join(source_date)
-
-            # Get content
-            content = art.get("content") or art.get("description") or "[No content available]"
-
-            # For email, keep summaries brief
-            if for_email and len(content) > 500:
-                content = content[:497] + "..."
-
-            # Format article for email
-            if for_email:
-                lines.append(f"{i}. {title}")
-                if source_date_str:
-                    lines.append(f"   {source_date_str}")
-                lines.append(f"   {url}")
-
-                # Add content as indented paragraph
-                content_lines = textwrap.wrap(content, width=70)
-                for line in content_lines:
-                    lines.append(f"   {line}")
-
-                # Add space between articles
-                lines.append("")
-            else:
-                # Original format
-                status = art.get("status", "")
-                leader_name = art.get("leader_name", "")
-                if leader_name:
-                    status += f" ({leader_name})"
-
-                lines.append(f"- {title}  [{status}]")
-                lines.append(f"  Link: {url}")
-
-                # Add content in bullet-pointed paragraphs
-                for paragraph in content.split("\n\n"):
-                    paragraph = paragraph.strip()
-                    if paragraph:  # Avoid blank paragraphs
-                        lines.append(f"    {paragraph}")
-
-                # Add a blank line after each article for separation
-                lines.append("")
+            process_article_in_text(art, for_email, i, lines)
+            if not for_email:
+                lines.append("-" * 60)  # Sub-divider for better readability
 
         # Add a separator between sections
         if for_email:
@@ -311,6 +268,86 @@ def format_text(results: dict, metadata: dict = None, for_email: bool = True) ->
 
     # Join the lines into a single text output
     return "\n".join(lines)
+
+
+def process_article_in_text(article, for_email, article_number, lines, section: str = None):
+    # Extract article details
+    title = article.get("title", "No title")
+    url = article.get("url", "#")
+    source = article.get("source", "")
+    published = article.get("published_at", article.get("publishedAt", ""))
+    # Format the date if available
+    date_str = ""
+    if published:
+        try:
+            # Try to parse the date and format it nicely
+            dt = datetime.fromisoformat(published.replace('Z', '+00:00'))
+            date_str = dt.strftime("%b %d")
+        except (ValueError, TypeError):
+            # If parsing fails, use the raw string
+            date_str = published
+    # Combine source and date
+    source_date = []
+    if source:
+        source_date.append(str(source.get("name", source) if isinstance(source, dict) else source))
+    if date_str:
+        source_date.append(str(date_str))
+    source_date_str = " | ".join(source_date)
+    # Get content
+    content = article.get("content") or article.get("description") or "[No content available]"
+    # For email, keep summaries brief
+    if for_email and len(content) > 500:
+        content = content[:497] + "..."
+    # Format article for email
+    if for_email:
+        if article_number > 0:
+            lines.append(f"{article_number}. {title}")
+        else:
+            lines.append(f"{section or ""}: {title}")
+        # Add status information
+        status = article.get("status", "")
+        if article.get("leader_name"):
+            status += f" ({article.get('leader_name')})"
+            # Add image status if available
+        if article.get("most_relevant_image"):
+            img_status = article.get("most_relevant_status", "unknown")
+            status += f" | {img_status}"
+        if status:
+            lines.append(f"   Status: {status}")
+
+        if source_date_str:
+            lines.append(f"   {source_date_str}")
+        lines.append(f"{url}")
+
+        # Add content as indented paragraph
+        content_lines = textwrap.wrap(content, width=70)
+        for line in content_lines:
+            lines.append(f"   {line}")
+
+        # Add space between articles
+        lines.append("")
+    else:
+        # Original format
+        status = article.get("status", "")
+        leader_name = article.get("leader_name", "")
+        if leader_name:
+            status += f" ({leader_name})"
+
+        lines.append(f"- {title}  [{status}]")
+        if article.get("most_relevant_image"):
+            img_status = article.get("most_relevant_status", "unknown")
+            lines.append(f"   Image status: {img_status}")
+        lines.append(f"  Link: {url}")
+
+        # Add content in bullet-pointed paragraphs
+        for paragraph in content.split("\n\n"):
+            paragraph = paragraph.strip()
+            if paragraph:  # Avoid blank paragraphs
+                lines.append(f"    {paragraph}")
+
+        # Add a blank line after each article for separation
+        lines.append("")
+
 
 def render_article_to_html(article: dict, query_name: str = None) -> str:
     """
@@ -596,6 +633,19 @@ def generate_html(results: dict, metadata: dict = None) -> str:
 
 
 def get_new_today_articles(results):
+    """
+    Get all articles marked as new today across all queries.
+
+    Parameters:
+    ----------
+    results : dict
+        Dictionary of query results
+
+    Returns:
+    --------
+    list
+        List of tuples containing (query_name, article) for new articles
+    """
     new_today_articles = []
     for query_name, articles in results.items():
         for art in articles:
@@ -634,7 +684,7 @@ def main():
     # Handle test mode with sample data
     if args.test:
         logger.info("Using sample data for testing")
-        results = generate_sample_data()
+        results = create_test_data()
     else:
         # Find and load real query files
         query_files = find_query_files(args.queries)
@@ -673,7 +723,7 @@ def main():
                     if content := article.get('content'):
                         # Estimate input length and adjust max_length accordingly
                         input_length = len(content) // 4  # rough token estimation
-                        max_length = min(130, max(30, input_length // 2))
+                        max_length = min(100, max(30, input_length // 2))
 
                         article['original_content'] = content
                         article['content'] = summarize_text_using_local_model(
@@ -686,9 +736,9 @@ def main():
 
     # Generate output based on format
     if args.format == 'email':
-        output = format_text(results, metadata, for_email=True)
+        output = generate_text(results, metadata, for_email=True)
     elif args.format == 'text':
-        output = format_text(results, metadata, for_email=False)
+        output = generate_text(results, metadata, for_email=False)
     elif args.format == 'html':
         output = generate_html(results, title=args.title)
     else:
@@ -703,7 +753,7 @@ def main():
         print(output)
 
 
-def generate_sample_data():
+def create_test_data():
     """Generate sample data for testing the formatter"""
     return {
         "Technology News": [

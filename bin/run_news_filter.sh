@@ -30,4 +30,6 @@ https://www.deliriumspb.com/johns_playground/$(basename "$OUT")
 
 EOF
 
+python news_formatter.py --format email >> simple_email.txt
+
 osascript send_email/send_email.applescript john@theabrahams.ca "News Today $OUT" simple_email.txt john@theabrahams.ca True

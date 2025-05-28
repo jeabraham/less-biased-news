@@ -28,7 +28,7 @@ from ai_queries import (
     clean_summary,
     spin_genders,
 )
-from news_formatter import format_text, generate_html
+from news_formatter import generate_text, generate_html
 
 # Approximate a character→token ratio if tiktoken not available:
 APPROX_CHARS_PER_TOKEN = 4
@@ -795,7 +795,7 @@ def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text"
     if fmt == "html":
         out = generate_html(res, metadata)
     else:  # Use plain text formatter for other formats
-        out = format_text(res, metadata)
+        out = generate_text(res, metadata)
 
     # Determine output file format
     if output is None:
