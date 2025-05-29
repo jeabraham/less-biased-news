@@ -495,7 +495,10 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         body = replace_male_first_names_with_initials(body, gender_map)
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
-    is_female_leader, leader_name = identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient)
+    if qcfg.get("classification", "True") in ("True", "true", "yes"):
+        is_female_leader, leader_name = identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient)
+    else:
+        is_female_leader, leader_name = False, None
     # Classify articles based on gender leadership
     if is_female_leader:
         art["status"] = "female_leader"
