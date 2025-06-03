@@ -9,7 +9,7 @@ mediastack:
   delay: 60
 
 openai:
-  api_key: "sk-proj--"
+  api_key: ""
   model: "gpt-4"
   complex_model: "gpt-4" # used for spin_genders and clean_summary
   simple_model: "gpt-3.5-turbo"  # used for short_summary (although check local_summarization as well) and classification
@@ -168,6 +168,7 @@ queries:
     page_size: 35
     classification: true
     languages: en
+    sources: "-americanbankingnews"
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
     summarize_selected: true
