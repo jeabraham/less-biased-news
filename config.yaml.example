@@ -1,50 +1,79 @@
 # Global API settings
 newsapi:
-  api_key: "your api key"
+  api_key: ""
   language: "en"
 
 mediastack:
-  access_key: "your api key"
+  access_key: ""
   base_url: "http://api.mediastack.com/v1/news"
   delay: 60
 
 openai:
-  api_key: "your api key"
-  model: "gpt-3.5-turbo"
-  max_tokens: 16385
-  temperature: 0
+  api_key: ""
+  model: "gpt-4"
+  complex_model: "gpt-4" # used for spin_genders and clean_summary
+  simple_model: "gpt-3.5-turbo"  # used for short_summary (although check local_summarization as well) and classification
+  max_tokens: 16000
+  temperature: 0.1
+# Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
 
-# Actual max_tokens is 16385 but we're approximating 4 characters per token
+localai:
+  "enabled": False  # If we just want to use open ai we can disable the local ai, especially since it doesn't work yet
+  "min_ram": 16  # Minimum RAM in GB
+  "min_cores": 8  # Minimum CPU cores
+  "max_input_tokens": 2048  # Maximum input tokens
+  "local_model": "Zyphra/Zamba2-2.7B-instruct"
+  "cpu_model_name": "Zyphra/Zamba2-2.7B-instruct"
+  # Also try facebook/bart-large-cnn
+  #"local_model": "EleutherAI/gpt-neo-2.7B"  # GPU model name
+  "local_model_path": "models/Zyphra"
+  #"cpu_model_name": "EleutherAI/gpt-neo-2.7B"  # CPU model name
+  "max_memory_mps": "6GB"  # at most 6 GB on the Vega 56
+  "max_memory_cpu": "58GB"   # the rest on system RAM
+
+local_summarization:
+    "enabled": True
+    "model": "facebook/bart-large-cnn"
+
+# The number of images to get from the news source to look for women.
+max_images: 3
+
 
 # Prompts for OpenAI
 prompts:
   classification: >-
     Does this article include a woman in a genuine leadership role?
-    Answer “yes” or “no” only.
+    Answer only "yes" or “no”, but if you know the name of the woman, include it after "yes".
   short_summary: >-
     Summarize the following article snippet in two sentences:
   spin_genders: >-
-    Can you write the following article a little differently, expanding the roles
-    of any women mentioned in the article, and if they are a public figure add a little bit of background on them
-    based on common knowledge?  Similarly, if a man is mentioned, even if a masculine name appears, you should
-    see if it you can remove his name without sacrificing the overall intent and meaning of the article.
+    Please rewrite the following article under these exact rules:
 
-    The idea is not to change the meaning of the article, but rather to ensure that the women are mentioned
-    by name, with a little more background, with feminine pronouns, while men are stripped of any gender pronouns,
-    and if their name is masculine and not an important detail, we can remove his name.  We aren't changing the news, just writing it
-    with a little bit of a feminist spin.  It's also ok to not change the article at all, if it already seems
-    to have a feminist spin.
+    1. **If no women or girls are mentioned in the article**, skip all other steps and write a **two-sentence summary** (≤ 100 words).
 
-    Please do not change the gender of anyone.  If someone is female, you can emphasize them and add more background information.  If someone is male, you can
-    remove their name, or diminish their role, or remove any pronouns that identify their gender.
+    2. **Draft**
+       • Remove all ads, subscription asks, boilerplate, and distractions.
+       • Preserve every named woman or girl — her full name and all her quotes exactly — do not diminish her role.
+       • Do **not** alter women’s or girls’ names, preserve all existing female names and feminine pronouns.
+       • Rewrite to reduce the use of gender-neutral pronouns such as they/them.
 
-    Here is the article :
+    3. **Enforce Length**
+       • Final output **must** be **500 words or fewer**.
+       • After drafting, count your words.
+       • If you exceed 500, delete the least-critical sentences (preserving women) and recount.
+       • Repeat until the word count is ≤ 500.
+
+    4. **Faithful & Complete**
+       • Maintain the original meaning, tone, and key facts.
+
+    —
+    **Original article:**
 
   clean_summary: >-
-    Cleanly summarize the following article, removing ads, subscription
-    prompts, boilerplate text, and distractions, focusing only on the
-    core narrative and quotes by women leaders:
-
+    Please create new version of the following article, removing ads, subscription
+    prompts, boilerplate text, and distractions. It should be slightly shorter than the original, and no longer than 500 words.
+    Ensure you include the core narrative, and the quotes and contributions of women, especially <leader_name>.
+    ###
 
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
@@ -84,51 +113,113 @@ leadership_keywords:
   - judge
   - magistrate
   - commissioner
+  - candidate
+  - nominee
+  - appointee
+  - official
+  - supervisor
+  - coordinator
+  - facilitator
+  - organizer
+  - partner
+  - co-chair
+  - provost
+  - rector
+  - headmistress
+  - premier
+  - minister
+  - sheriff
+  - chairman
+  - chairwoman
+  - treasurer
+  - chairperson
+  - trustee
+  - councillor
+  - advisor
+  - coach
+  - mediator
 
 # Define as many queries as you like:
 #   - `q`: your NewsAPI query (supports quoted phrases, +/– prefixes, AND/OR/NOT)
 #   - `classification`: whether to apply the female-leadership filter
 #   - `fallback`: what to do with non-female-leadership articles
-#       * show-full: include original
+#       * show_full: include original
 #       * short_summary: replace content with OpenAI summary
-#       * spin-genders: rewrite via OpenAI with female spin
+#       * spin_genders: rewrite via OpenAI with female spin
 #       * exclude: drop it
 queries:
-
-  - name: Canada Women
-    provider: newsapi
-    q: '"Canada" and ("woman" or "women" or "girl")'
-    page_size: 50
-    history_days: 5       # override default: grab the last 14 days
-    classification: true
-    fallback: exclude  # Options: show-full, short_summary, spin-genders, exclude
-    fallback_image_female: short_summary     # if a woman’s face is prominent
-    summarize_selected: true
 
   - name: Calgary
     provider: newsapi
     q: "Calgary"
     page_size: 10
     classification: false
-    fallback: short_summary
+    fallback_image_female: spin_genders
+    fallback: short_summary  # Options: show_full, short_summary, spin
+    fallback_women: spin_genders
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
 
-  - name: Canada politics
+  - name: Canada
     provider: mediastack
-    q: "Canada politics"
-    page_size: 60
-    history_days: 5       # override default: grab the last 14 days
+    q: "Canada,-investing,-investment,-share,-market capitalization,-earnings per share,-shares,-stock,-business.-wall street,-stock market,-stocks,-strong-buy,-finance,-earnings,-price target,-target price,-www.americanbankingnews.com,-banking"
+    categories: "-business"  # exclude business news, really we want to exclude share purchases and stock market news
+    page_size: 35
     classification: true
-    fallback: short_summary  # Options: show-full, short_summary, spin-genders, exclude
+    languages: en
+    sources: "-americanbankingnews"
+    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
 #    countries: ca doesn't work
+#    history_days: 5       History seems to not work at least not the way we're doing it with the free API tier.
 
   - name: Global News
-    provider: mediastack
-    q: 'global news'
+    provider: newsapi
+    q: 'Global News'
     page_size: 100
     history_days: 5       # override default: grab the last 14 days
     classification: true
-    fallback: exclude  # Options: show-full, short_summary, spin-genders, exclude
+    fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
     fallback_image_female: short_summary     # if a woman’s face is prominent
     summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
+
+  - name: Canada Women
+    provider: newsapi
+    q: '"Canada" and ("woman" or "women" or "girl")'
+    page_size: 20
+    classification: true
+    fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_image_female: short_summary     # if a woman’s face is prominent
+    summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
+
+  - name: Skiing
+    provider: newsapi
+    q: '"Skiing"'
+    page_size: 25
+    classification: true
+    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_women: spin_genders
+    fallback_image_female: show_full     # if a woman’s face is prominent
+    summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true
+
+  - name: Trombone
+    provider: newsapi
+    q: '"Trombone"'
+    page_size: 20
+    classification: true
+    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_women: spin_genders
+    fallback_image_female: show_full     # if a woman’s face is prominent
+    summarize_selected: true
+    male_initials: true
+    remove_male_pronouns: true

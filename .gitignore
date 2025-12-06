@@ -174,5 +174,10 @@ cython_debug/
 .pypirc
 /news.html
 /news.html
-/config.yaml
+/config_old.yaml
 /output/
+/cache/
+/config.yaml
+config.yaml
+/config*.yaml
+/models/

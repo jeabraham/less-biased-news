@@ -72,53 +72,68 @@ def load_image(data: bytes):
 
 def analyze_image_gender(image_url: str):
     """
-    Download an image, detect ALL faces with MTCNN,
-    then classify each crop with DeepFace.
-    Catches and logs detection errors (e.g. empty lists → torch.cat() failures).
+    Download an image, detect faces using MTCNN, and classify each detected face's gender using DeepFace.
+
+    This method performs the following steps:
+    1. Downloads the image from the given URL.
+    2. Detects faces in the image using MTCNN.
+    3. For each detected face, classifies the gender (Male/Woman) using the DeepFace library.
+    4. Calculates a prominence score for each face based on its relative size in the image.
+
+    Parameters:
+    ----------
+    image_url : str
+        The URL of the image to analyze.
+
+    Returns:
+    --------
+    tuple:
+        - A list of detected faces (or None if no faces are detected).
+        - A tuple containing the image dimensions (width, height) or None if unavailable.
     """
     start = time.time()
     logger.info(f"[ImageGender] Starting analysis for {image_url}")
 
-    # 1) Download + load
     try:
+        # 1) Download and load the image
         data = download_image(image_url, timeout=5)
         if not data:
-            return []  # abort face analysis
+            return None, None  # Return with no faces and dimensions if download fails
         img_pil = load_image(data)
         if img_pil is None:
             logger.info(f"[ImageGender] Unable to parse image, skipping: {image_url}")
-            return []
-        img_np  = np.array(img_pil)
-        H, W, _ = img_np.shape
-        logger.debug(f"[ImageGender] Downloaded image in {time.time()-start:.2f}s")
+            return None, None
+
+        img_np = np.array(img_pil)
+        H, W, _ = img_np.shape  # Extract image dimensions
+        logger.debug(f"[ImageGender] Downloaded image in {time.time() - start:.2f}s (W={W}, H={H})")
     except Exception as e:
         logger.warning(f"[ImageGender] Download/Open failed: {e}")
-        return []
+        return None, None
 
-    # 2) Face detection (fully wrapped)
-    t0 = time.time()
     try:
+        # 2) Face detection with MTCNN
+        t0 = time.time()
         boxes, _ = mtcnn.detect(img_pil)
     except Exception as e:
-        # This will catch the torch.cat() error or any MTCNN internals
-        logger.warning(f"[ImageGender] Face detection error (took {time.time()-t0:.2f}s): {e}")
-        return []
+        logger.warning(f"[ImageGender] Face detection error (took {time.time() - t0:.2f}s): {e}")
+        return None, (W, H)
     finally:
-        logger.debug(f"[ImageGender] detect() call finished in {time.time()-t0:.2f}s")
+        logger.debug(f"[ImageGender] detect() call finished in {time.time() - t0:.2f}s")
 
-    # 3) Handle zero faces
+    # Handle zero faces
     if boxes is None or len(boxes) == 0:
-        logger.info(f"[ImageGender] No faces detected (in {time.time()-t0:.2f}s)")
-        return []
+        logger.info(f"[ImageGender] No faces detected (in {time.time() - t0:.2f}s)")
+        return None, (W, H)
 
     logger.debug(f"[ImageGender] MTCNN found {len(boxes)} face(s)")
 
     faces = []
-    # 4) Classify each face crop
     for i, box in enumerate(boxes):
         x1, y1, x2, y2 = [int(b) for b in box]
         w, h = x2 - x1, y2 - y1
-        # drop tiny detections
+
+        # Ignore faces that are too small
         if w < W * MIN_FACE_WIDTH_RATIO:
             logger.debug(f"[ImageGender] Dropped tiny face {i}: w={w}px")
             continue
@@ -137,32 +152,32 @@ def analyze_image_gender(image_url: str):
 
         rec = od if isinstance(od, dict) else od[0]
         raw = rec.get("gender", {})
-        man_score   = raw.get("Man",   0.0)
+        man_score = raw.get("Man", 0.0)
         woman_score = raw.get("Woman", 0.0)
         total = man_score + woman_score
 
         if total > 0:
             if woman_score > man_score:
-                gender     = "Woman"
+                gender = "Woman"
                 confidence = woman_score / total
             else:
-                gender     = "Man"
+                gender = "Man"
                 confidence = man_score / total
         else:
-            gender     = rec.get("dominant_gender", "Unknown")
+            gender = rec.get("dominant_gender", "Unknown")
             confidence = rec.get("gender_confidence", 0.0)
 
         prominence = (w * h) / (W * H) if (W * H) else 0.0
 
         face_rec = {
-            "region":      (x1, y1, w, h),
-            "raw_scores":  {"Man": man_score, "Woman": woman_score},
-            "gender":      gender,
-            "confidence":  confidence,
-            "prominence":  prominence
+            "region": (x1, y1, w, h),
+            "raw_scores": {"Man": man_score, "Woman": woman_score},
+            "gender": gender,
+            "confidence": confidence,
+            "prominence": prominence
         }
         logger.debug(f"[ImageGender] Face {i}: {face_rec}")
         faces.append(face_rec)
 
-    logger.info(f"[ImageGender] Completed in {time.time()-start:.2f}s: {len(faces)} valid face(s)")
-    return faces
+    logger.info(f"[ImageGender] Completed in {time.time() - start:.2f}s: {len(faces)} valid face(s)")
+    return faces, (W, H)
