@@ -78,7 +78,7 @@ class AIUtils:
         self.local_model = None
         self.local_tokenizer = None
         self.local_model_device = None
-        if cfg["localai"].get("enabled", False):
+        if "localai" in cfg and cfg["localai"].get("enabled", False):
             self.local_capable = self._detect_environment()
             if self.local_capable and cfg["localai"].get("enabled", False):
                 self._load_local_model()
