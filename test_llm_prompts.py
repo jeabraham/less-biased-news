@@ -16,8 +16,6 @@ import yaml
 
 from ai_utils import AIUtils
 from ai_queries import classify_leadership, short_summary, clean_summary, spin_genders
-from article_fetcher import fetch_full_text_and_images
-from news_filter import load_config, fetch_articles
 
 # Configure logging
 logging.basicConfig(
@@ -25,6 +23,44 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def load_config(path: str = "config.yaml") -> dict:
+    """Load configuration from YAML file."""
+    logger.debug(f"Loading config from {path}")
+    if not os.path.exists(path):
+        logger.error(f"Config file not found: {path}")
+        raise FileNotFoundError(f"{path} does not exist")
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    logger.info("Configuration loaded successfully")
+    return cfg
+
+
+def fetch_full_text_and_images(url: str):
+    """
+    Fetch full text and images from a URL using article_fetcher.
+    This is a lazy import wrapper to avoid heavy dependencies at module load.
+    """
+    try:
+        from article_fetcher import fetch_full_text_and_images as _fetch
+        return _fetch(url)
+    except ImportError as e:
+        logger.error(f"Could not import article_fetcher: {e}")
+        raise
+
+
+def fetch_articles(query_cfg: dict, cfg: dict):
+    """
+    Fetch articles using news_filter's fetch function.
+    This is a lazy import wrapper to avoid heavy dependencies at module load.
+    """
+    try:
+        from news_filter import fetch_articles as _fetch
+        return _fetch(query_cfg, cfg)
+    except ImportError as e:
+        logger.error(f"Could not import news_filter: {e}")
+        raise
 
 
 class LLMPromptTester:
