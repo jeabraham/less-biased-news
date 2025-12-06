@@ -26,13 +26,13 @@ ollama:
   base_url: "http://localhost:11434"  # Default Ollama API endpoint
   model: "llama3-lexi-uncensored"  # Default model if task-specific model not specified
   # Task-specific models
-  classify_leadership_model: " llama3.1:8b"
-  short_summary_model: "llama3.1:8b"
-  clean_summary_model: "llama3.1:8b"
-  spin_genders_model: "dolphin3"
-  add_background_on_women_model: "llama3.1:8b"
+  classify_leadership_model: "llama3.1:8b"
+  short_summary_model: "glm4"
+  clean_summary_model: "glm4"
+  spin_genders_model: "Godmoded/llama3-lexi-uncensored"
+  add_background_on_women_model: "Godmoded/llama3-lexi-uncensored"
   temperature: 0.1
-  max_tokens: 4096  # Maximum tokens for completion
+  max_tokens: 8192  # Maximum tokens for completion
 
 # DEPRECATED: localai is deprecated in favor of Ollama for local LLM inference
 # localai:
@@ -57,7 +57,7 @@ max_images: 3
 female_leadership_detection:
   use_local_checks: True  # If True, check for female names and leadership keywords before calling LLM
   require_female_names: True  # Only call LLM if female names are detected
-  require_leadership_keywords: True  # Only call LLM if leadership keywords are detected
+  require_leadership_keywords: False  # Only call LLM if leadership keywords are detected
 
 
 # Prompts for OpenAI
@@ -111,7 +111,17 @@ prompts:
     Article:
 
   short_summary: >-
-    Summarize the following article snippet in two sentences:
+    Summarize the article snippet in exactly two sentences.
+
+    Output format:
+    <Sentence 1> <Sentence 2>
+
+    Do NOT add anything before, after, or between the two sentences.
+
+    No preamble. No labels. No commentary.
+
+    Article:
+
   spin_genders: >-
     You are rewriting a news article with a mild feminist reframing. Your goal is to adjust emphasis and tone, while preserving the original meaning, facts, and structure.
 
