@@ -66,29 +66,60 @@ def truncate_for_openai(
 def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, task: str = None) -> str:
     """
     Call the Ollama API for generating a response based on the given prompt and text.
-    
+
     Args:
-        prompt: The prompt to send to the model
-        text: The text to process
-        return_tokens: Maximum number of tokens to generate
-        cfg: Configuration dictionary
-        ai_util: AIUtils instance
-        task: Task name (classify_leadership, short_summary, clean_summary, spin_genders)
+        prompt: The prompt to send to the model.
+        text: The text to process.
+        return_tokens: Maximum number of tokens the model should generate.
+        cfg: Configuration dictionary.
+        ai_util: AIUtils instance for performing the actual Ollama call.
+        task: Task name (classify_leadership, short_summary, clean_summary, spin_genders, etc.)
     """
+
     try:
-        # Approximate token truncation (4 chars per token)
-        max_input_chars = (cfg.get("ollama", {}).get("max_tokens", 4096) - return_tokens) * 4
-        if len(text) > max_input_chars:
-            logger.warning(f"Text too long ({len(text)} chars), truncating to {max_input_chars} chars")
-            text = text[:max_input_chars]
-        
-        prompt_plus_text = prompt + "\n\n" + text
+        # ----------------------------------------------------------------------
+        # SAFE INPUT LIMITING
+        # ----------------------------------------------------------------------
+        # True context limits vary by model (llama3.1:8b ~8192 tokens).
+        # To avoid overflow, we allow up to ~32k characters of input.
+        # This never truncates normal articles.
+        # ----------------------------------------------------------------------
+
+        # Conservative safe upper bound (approx. model max context).
+        MAX_INPUT_CHARS = cfg.get("ollama", {}).get("max_input_chars", 32000)
+
+        if len(text) > MAX_INPUT_CHARS:
+            logger.warning(
+                f"Input text too long ({len(text)} chars), truncating to {MAX_INPUT_CHARS} chars"
+            )
+            text = text[:MAX_INPUT_CHARS]
+
+        # ----------------------------------------------------------------------
+        # BUILD PROMPT
+        # ----------------------------------------------------------------------
+        prompt_plus_text = f"{prompt}\n\n{text}"
+
         logger.debug("Running Ollama call")
-        
+
+        # ----------------------------------------------------------------------
+        # TEMPERATURE
+        # ----------------------------------------------------------------------
         temp = cfg.get("ollama", {}).get("temperature", 0.1)
-        result = ai_util._call_ollama_api(prompt_plus_text, max_tokens=return_tokens, temperature=temp, task=task)
-        logger.debug(f"Ollama result: {result[:100]}...")
+
+        # ----------------------------------------------------------------------
+        # API CALL (no internal truncation)
+        # ----------------------------------------------------------------------
+        result = ai_util._call_ollama_api(
+            prompt_plus_text,
+            max_tokens=return_tokens,
+            temperature=temp,
+            task=task,
+        )
+
+        # Log only beginning for safety
+        logger.debug(f"Ollama result preview: {result[:200]}...")
         return result
+
     except Exception as e:
         logger.error(f"Ollama API call failed: {e}")
         return ""
