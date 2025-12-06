@@ -27,6 +27,7 @@ from ai_queries import (
     short_summary,
     clean_summary,
     spin_genders,
+    add_background_on_women,
 )
 from news_formatter import generate_text, generate_html
 
@@ -364,6 +365,35 @@ def replace_male_pronouns_with_neutral(text):
 
 # ─── Fetch & Filter ────────────────────────────────────────────────────
 
+def fetch_articles(qcfg: dict, cfg: dict, use_cache: bool = False) -> list:
+    """
+    Fetch articles from a single news source based on query configuration.
+    
+    Args:
+        qcfg: Query-specific configuration dictionary containing provider, query parameters, etc.
+        cfg: Global configuration dictionary
+        use_cache: Whether to use cached results if available
+        
+    Returns:
+        list: List of raw article dictionaries fetched from the news source
+    """
+    name = qcfg.get("name", "Unknown")
+    logger.info(f"Fetching articles for query '{name}'")
+    
+    # Determine which provider to use
+    provider = qcfg.get("provider", "newsapi").lower()
+    
+    if provider == "mediastack":
+        raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
+    else:
+        # Initialize NewsAPI client for newsapi provider
+        newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
+        raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
+    
+    logger.info(f"Fetched {len(raw_articles)} articles from {provider} for '{name}'")
+    return raw_articles
+
+
 def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False) -> dict:
     logger.info("Initializing NewsAPI client")
     newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
@@ -419,11 +449,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         cached_titles = {cached_art.get("title", "") for cached_art in (cached_items or [])}
 
         # ─── Fetch Raw Articles From the Right Source ────────────────
-        provider = qcfg.get("provider", "newsapi").lower()
-        if provider == "mediastack":
-            raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
-        else:
-            raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
+        raw_articles = fetch_articles(qcfg, cfg, use_cache=use_cache)
 
         # ─── Extract Names, Bodies, and Images ────────────────
         bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp, max_images=max_images)
@@ -546,24 +572,58 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
 
 
 def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
-    # 4) Analyze detected PERSON names for female associations
+    """
+    Identify if article is about female leadership.
+    
+    Behavior can be controlled by cfg['female_leadership_detection']:
+    - use_local_checks: If True (default), check for female names and keywords first
+    - require_female_names: If True (default), only call LLM if female names detected
+    - require_leadership_keywords: If True (default), only call LLM if leadership keywords detected
+    
+    If use_local_checks is False, always calls classify_leadership directly.
+    """
+    # Get configuration settings
+    detection_cfg = cfg.get("female_leadership_detection", {})
+    use_local_checks = detection_cfg.get("use_local_checks", True)
+    require_female_names = detection_cfg.get("require_female_names", True)
+    require_leadership_keywords = detection_cfg.get("require_leadership_keywords", True)
+    
+    is_female_leader = False
+    leader_name = None
+    
+    if not use_local_checks:
+        # Skip local checks, directly call LLM
+        try:
+            is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
+        except Exception as e:
+            logger.warning(f"LLM classification error: {e}")
+        return is_female_leader, leader_name
+    
+    # Perform local checks
     female_names = [p for p in persons if gender_map.get(p) == "female"]
     has_kw = any(
         kw.lower() in body.lower()
         for kw in cfg.get("leadership_keywords", [])
     )
+    
     if female_names:
         stats["female_names"] += 1
     if has_kw:
         stats["keyword_hits"] += 1
-    # 5) Check if the article pertains to a female leader
-    is_female_leader = False
-    leader_name = None
-    if female_names and has_kw:
+    
+    # Determine if we should call the LLM based on configuration
+    should_call_llm = True
+    if require_female_names and not female_names:
+        should_call_llm = False
+    if require_leadership_keywords and not has_kw:
+        should_call_llm = False
+    
+    if should_call_llm:
         try:
             is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
         except Exception as e:
-            logger.warning(f"OpenAI classification error on': {e}")
+            logger.warning(f"LLM classification error: {e}")
+    
     return is_female_leader, leader_name
 
 

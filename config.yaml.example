@@ -10,26 +10,43 @@ mediastack:
 
 openai:
   api_key: ""
-  model: "gpt-4"
-  complex_model: "gpt-4" # used for spin_genders and clean_summary
-  simple_model: "gpt-3.5-turbo"  # used for short_summary (although check local_summarization as well) and classification
+  model: "gpt-4"  # Default model if task-specific model not specified
+  # Task-specific models
+  classify_leadership_model: "gpt-3.5-turbo"
+  short_summary_model: "gpt-3.5-turbo"
+  clean_article_model: "gpt-3.5-turbo"
+  clean_summary_model: "gpt-4"
+  spin_genders_model: "gpt-4"
+  add_background_on_women_model: "gpt-4"
   max_tokens: 16000
   temperature: 0.1
 # Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
 
-localai:
-  "enabled": False  # If we just want to use open ai we can disable the local ai, especially since it doesn't work yet
-  "min_ram": 16  # Minimum RAM in GB
-  "min_cores": 8  # Minimum CPU cores
-  "max_input_tokens": 2048  # Maximum input tokens
-  "local_model": "Zyphra/Zamba2-2.7B-instruct"
-  "cpu_model_name": "Zyphra/Zamba2-2.7B-instruct"
-  # Also try facebook/bart-large-cnn
-  #"local_model": "EleutherAI/gpt-neo-2.7B"  # GPU model name
-  "local_model_path": "models/Zyphra"
-  #"cpu_model_name": "EleutherAI/gpt-neo-2.7B"  # CPU model name
-  "max_memory_mps": "6GB"  # at most 6 GB on the Vega 56
-  "max_memory_cpu": "58GB"   # the rest on system RAM
+ollama:
+  enabled: True  # Set to True to use Ollama instead of OpenAI
+  base_url: "http://localhost:11434"  # Default Ollama API endpoint
+  model: "llama3.1:8b"  # Default model if task-specific model not specified
+  # Task-specific models
+  classify_leadership_model: "llama3.1:8b"
+  short_summary_model: "glm4"
+  clean_article_model: "glm4"
+  clean_summary_model: "glm4"
+  spin_genders_model: "dolphin3"
+  add_background_on_women_model: "glm4"
+  temperature: 0.1
+  max_tokens: 8192  # Maximum tokens for completion
+
+# DEPRECATED: localai is deprecated in favor of Ollama for local LLM inference
+# localai:
+#   "enabled": False
+#   "min_ram": 16
+#   "min_cores": 8
+#   "max_input_tokens": 2048
+#   "local_model": "Zyphra/Zamba2-2.7B-instruct"
+#   "cpu_model_name": "Zyphra/Zamba2-2.7B-instruct"
+#   "local_model_path": "models/Zyphra"
+#   "max_memory_mps": "6GB"
+#   "max_memory_cpu": "58GB"
 
 local_summarization:
     "enabled": True
@@ -38,42 +55,156 @@ local_summarization:
 # The number of images to get from the news source to look for women.
 max_images: 3
 
+# Control how female leadership is identified
+female_leadership_detection:
+  use_local_checks: True  # If True, check for female names and leadership keywords before calling LLM
+  require_female_names: True  # Only call LLM if female names are detected
+  require_leadership_keywords: False  # Only call LLM if leadership keywords are detected
+
 
 # Prompts for OpenAI
 prompts:
+  clean_article: >-
+    Below is a news article copied from an online news source.
+
+    Your task:
+    Return the article **exactly as written**, except:
+
+    - Remove ads
+    - Remove subscription prompts
+    - Remove paywall text
+    - Remove navigation lists
+    - Remove “related stories” or “story continues below”
+    - Remove promotional blocks
+    - Remove social media prompts
+    - Remove newsletter signup boxes
+    - Remove cookie notices
+    - Remove photo captions if they are not part of the story
+    - Remove any other boilerplate or distractions that are not part of the article’s narrative
+
+    Important rules:
+    - Do NOT rephrase or rewrite any remaining text.
+    - Do NOT summarize or shorten the meaningful content.
+    - Do NOT add new sentences or commentary.
+    - Do NOT remove any quotes, names, or factual content from the main article.
+    - Preserve paragraph breaks where possible.
+    - If uncertain whether a section is article content or boilerplate, KEEP IT.
+
+    Now return the cleaned article only:
+
+    ARTICLE:
+
   classification: >-
-    Does this article include a woman in a genuine leadership role?
-    Answer only "yes" or “no”, but if you know the name of the woman, include it after "yes".
+    You are a classifier.
+
+    Task:
+    Read the article.
+    Determine whether the article includes at least one WOMAN in a genuine leadership role.
+
+    Rules:
+    - If you find at least one woman in a leadership role, answer exactly:
+      yes [Full Name]
+      (Example: yes Jane Smith)
+    - If you do not, answer exactly:
+      no
+
+    Do not add any extra words.
+
+    Article:
+
   short_summary: >-
-    Summarize the following article snippet in two sentences:
+    Summarize the article snippet in exactly two sentences.
+
+    Output format:
+    <Sentence 1> <Sentence 2>
+
+    Do NOT add anything before, after, or between the two sentences.
+
+    No preamble. No labels. No commentary.
+
+    Article:
+
   spin_genders: >-
-    Please rewrite the following article under these exact rules:
+    You are rewriting a news article with a mild feminist reframing. Your goal is to adjust emphasis and tone, while preserving the original meaning, facts, and structure.
 
-    1. **If no women or girls are mentioned in the article**, skip all other steps and write a **two-sentence summary** (≤ 100 words).
+    Follow these rules:
 
-    2. **Draft**
-       • Remove all ads, subscription asks, boilerplate, and distractions.
-       • Preserve every named woman or girl — her full name and all her quotes exactly — do not diminish her role.
-       • Do **not** alter women’s or girls’ names, preserve all existing female names and feminine pronouns.
-       • Rewrite to reduce the use of gender-neutral pronouns such as they/them.
+    1. **Emphasize Women**
+       - Preserve the full names of all women or girls mentioned.
+       - If a woman is quoted, keep her full quote intact.
+       - Strengthen her presence: expand her role slightly, amplify her agency, and give her actions a touch more importance.
+       - Do not invent new events or alter factual information.
 
-    3. **Enforce Length**
-       • Final output **must** be **500 words or fewer**.
-       • After drafting, count your words.
-       • If you exceed 500, delete the least-critical sentences (preserving women) and recount.
-       • Repeat until the word count is ≤ 500.
+    2. **De-Emphasize Men**
+       - If a man is mentioned and his name is not essential to the meaning, replace his name with a neutral phrase such as “a spokesperson,” “an official,” “a representative,” or “a city staff member.”
+       - Remove masculine pronouns when possible without harming clarity.
+       - If a man’s name must stay (e.g., key public figure), keep the surname, replace any first name with an initial, and reduce descriptive detail and avoid adding any background about him.
 
-    4. **Faithful & Complete**
-       • Maintain the original meaning, tone, and key facts.
+    3. **Tone & Meaning**
+       - Maintain journalistic clarity and neutrality.
+       - Keep all facts intact.
+       - The feminist reframing should be gentle, subtle, and grounded — not ideological or exaggerated.
+
+    4. **Do NOT add biographical background in this stage.**
+       - That will be handled later.
+
+    5. **Length**
+       - Keep the length similar to the original unless the original is extremely short.
+
+    Now rewrite the following article under these rules:
 
     —
     **Original article:**
 
+  add_background_on_women: >-
+    Your task is to add accurate, commonly known background information about women who appear in this article, but only if they are public figures.
+
+    Follow these rules carefully:
+
+    1. **Identify Women**
+       - Identify all named women or girls in the article.
+       - Determine if each one is a public figure, such as:
+         • elected official
+         • political candidate
+         • public servant
+         • journalist
+         • activist
+         • celebrity
+         • senior academic
+         • other widely known professional roles
+
+    2. **Add Background (Women Only)**
+       - For each woman who is a public figure, add a **brief, factual, one-sentence background** immediately after her first mention.
+       - This sentence must reflect widely known public information only.
+       - Do not create fictional details or speculation.
+
+    3. **Do NOT Add Background About Men**
+       - Men should remain anonymized or de-emphasized exactly as written in the Stage 1 version.
+       - Do not restore male names that were removed.
+
+    4. **Preserve Meaning**
+       - Do not change the article’s events, quotes, or narrative flow.
+       - Only insert factual background sentences about women.
+
+    5. **Keep It Subtle**
+       - Tone should remain journalistic and neutral.
+
+    Now take the following Stage 1 rewritten article and perform only the additions described above:
+
   clean_summary: >-
-    Please create new version of the following article, removing ads, subscription
-    prompts, boilerplate text, and distractions. It should be slightly shorter than the original, and no longer than 500 words.
-    Ensure you include the core narrative, and the quotes and contributions of women, especially <leader_name>.
-    ###
+    Create a slightly shorter and cleaner version of the following article.
+
+    The article is already cleaned of ads and boilerplate. Focus only on tightening the narrative while preserving meaning.
+
+    Rules:
+    - Keep all quotes and names exactly as written.
+    - Preserve and emphasize the contributions of women, especially <leader_name>.
+    - Preserve all essential facts and the overall storyline.
+    - Do NOT add new information or reinterpret events.
+    - Do NOT add headers, markdown, or commentary.
+    - The result must be no longer than 500 words.
+
+    Article:
 
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
