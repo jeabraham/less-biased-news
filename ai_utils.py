@@ -13,17 +13,24 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import openai as openai_pkg
 
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
 class AIUtils:
     def __init__(self, cfg):
         """
-        Initialize AI utility class with configuration. Separate OpenAI and local AI configs.
+        Initialize AI utility class with configuration. Separate OpenAI, Ollama and local AI configs.
         """
         self.cfg = cfg
-        # Separate OpenAI and LocalAI configurations
+        # Separate OpenAI, Ollama and LocalAI configurations
         self.openai_cfg = cfg.get("openai", {})
+        self.ollama_cfg = cfg.get("ollama", {})
         self.localai_cfg = cfg.get("localai", {})
         self.huggingface_model = self.localai_cfg.get("summarization_model", "facebook/bart-large-cnn")
 
@@ -33,9 +40,33 @@ class AIUtils:
         self.local_summarization = local_summarization_cfg.get("enabled", False)
         self.local_summarization_model = local_summarization_cfg.get("model", "facebook/bart-large-cnn")
 
-        openai_pkg.api_key = cfg["openai"]["api_key"]
-        self.openai_client = openai_pkg
-        self.openai_tokenizer = tiktoken.encoding_for_model(self.openai_cfg.get("model", "gpt-3.5-turbo"))
+        # Initialize Ollama client if enabled
+        self.ollama_enabled = self.ollama_cfg.get("enabled", False) and OLLAMA_AVAILABLE
+        self.ollama_client = None
+        if self.ollama_enabled:
+            if not OLLAMA_AVAILABLE:
+                logger.warning("Ollama is enabled in config but ollama package is not installed. Install with: pip install ollama")
+                self.ollama_enabled = False
+            else:
+                logger.info("Ollama is enabled and will be used as the LLM provider")
+                # Ollama client is used directly via the ollama module
+                self.ollama_client = ollama
+        
+        # Initialize OpenAI only if Ollama is not enabled
+        if not self.ollama_enabled:
+            openai_api_key = cfg.get("openai", {}).get("api_key", "")
+            if openai_api_key:
+                openai_pkg.api_key = openai_api_key
+                self.openai_client = openai_pkg
+                self.openai_tokenizer = tiktoken.encoding_for_model(self.openai_cfg.get("model", "gpt-3.5-turbo"))
+            else:
+                logger.warning("No OpenAI API key provided and Ollama not enabled")
+                self.openai_client = None
+                self.openai_tokenizer = None
+        else:
+            self.openai_client = None
+            # For Ollama, we'll use a simple character-based approximation for tokenization
+            self.openai_tokenizer = None
 
         self.local_model_path = self.localai_cfg.get(
             "local_model_path", "models/ggml-model-q4.bin"
@@ -202,3 +233,49 @@ class AIUtils:
         except Exception as e:
             logger.error(f"OpenAI API call failed: {e}")
             return "⚠️ OpenAI API fallback failed."
+
+    def _call_ollama_api(self, prompt: str, max_tokens: int = 200, temperature: float = None, complex: bool = False) -> str:
+        """
+        Perform API-based inference via Ollama.
+        
+        Args:
+            prompt: The prompt to send to the model
+            max_tokens: Maximum number of tokens to generate
+            temperature: Sampling temperature (None uses config default)
+            complex: If True, use complex_model, otherwise use simple_model
+            
+        Returns:
+            The generated text
+        """
+        try:
+            if not self.ollama_enabled or not self.ollama_client:
+                raise RuntimeError("Ollama is not enabled or not available")
+            
+            # Select model based on complexity
+            if complex:
+                model_name = self.ollama_cfg.get("complex_model", self.ollama_cfg.get("model", "llama3-lexi-uncensored"))
+            else:
+                model_name = self.ollama_cfg.get("simple_model", self.ollama_cfg.get("model", "llama3-lexi-uncensored"))
+            
+            if temperature is None:
+                temperature = self.ollama_cfg.get("temperature", 0.1)
+            
+            logger.info(f"Calling Ollama API with model: {model_name}")
+            
+            # Call Ollama API
+            response = self.ollama_client.generate(
+                model=model_name,
+                prompt=prompt,
+                options={
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                }
+            )
+            
+            result = response.get("response", "").strip()
+            logger.debug(f"Ollama result length: {len(result)} chars")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Ollama API call failed: {e}")
+            return ""

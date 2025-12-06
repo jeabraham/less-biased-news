@@ -98,9 +98,70 @@ Or use the helper script:
 ```bash
 bin/run_news_filter.sh
 ```
-## Local AI Model Setup
 
-This project supports local AI inference using pre-trained models. For best performance, the system will automatically attempt to download the required local model. However, you can also manually set up a model if desired.
+## Using Ollama (Recommended for Local LLM)
+
+This project supports [Ollama](https://ollama.ai/) as a local LLM provider, which doesn't require an OpenAI API key. Ollama is recommended for local inference as it's easier to set up than the transformers-based models.
+
+### 1. Install Ollama
+
+Follow the installation instructions at [https://ollama.ai/](https://ollama.ai/):
+
+- **macOS/Linux**: `curl -fsSL https://ollama.ai/install.sh | sh`
+- **Windows**: Download from [https://ollama.ai/download](https://ollama.ai/download)
+
+### 2. Pull a Model
+
+The project works well with uncensored models like `llama3-lexi-uncensored`. Pull the model:
+
+```bash
+ollama pull Godmoded/llama3-lexi-uncensored
+```
+
+Other recommended models:
+- `llama2` - Good general-purpose model
+- `mistral` - Fast and efficient
+- `llama3` - Latest version of Llama
+
+### 3. Start Ollama Server
+
+Ollama runs as a local server. Start it with:
+
+```bash
+ollama serve
+```
+
+By default, it runs on `http://localhost:11434`.
+
+### 4. Configure the Project
+
+In your `config.yaml`, enable Ollama and disable OpenAI:
+
+```yaml
+ollama:
+  enabled: True
+  base_url: "http://localhost:11434"
+  model: "llama3-lexi-uncensored"
+  complex_model: "llama3-lexi-uncensored"
+  simple_model: "llama3-lexi-uncensored"
+  temperature: 0.1
+  max_tokens: 4096
+
+openai:
+  api_key: ""  # Leave empty when using Ollama
+```
+
+### 5. Test Ollama
+
+You can test that Ollama is working:
+
+```bash
+python test_llm_prompts.py --config config.yaml --num-articles 5 --fetch
+```
+
+## Local AI Model Setup (Alternative)
+
+This project also supports local AI inference using pre-trained models from Hugging Face. However, Ollama (above) is recommended as it's easier to set up.
 
 ### 1. Automatic Model Download
 By default, the project will download the pre-trained model during initialization (if not already present). Ensure the destination path is configured correctly in `config.yaml`:
@@ -133,6 +194,56 @@ local_model_path: "models/your_model_location/model.bin"
 
 With the correct setup, the system will prioritize local inference over fallback methods (e.g., OpenAI API).
 
+## Testing LLM Prompts
+
+The project includes a test script to help you fine-tune your LLM prompts for the four main operations: classification, short_summary, spin_genders, and clean_summary. This is especially useful when switching between different LLMs (OpenAI, Ollama, local models).
+
+### Running the Test
+
+```bash
+python test_llm_prompts.py --config config.yaml --num-articles 20 --fetch
+```
+
+### Command-line Options
+
+- `--config`: Path to configuration file (default: config.yaml)
+- `--num-articles`: Number of articles to test (default: 20)
+- `--fetch`: Fetch new articles from configured news sources
+- `--cache-folder`: Path to cache folder (default: cache)
+- `--output`: Output file for results (default: test_results_<timestamp>.json)
+- `--log-level`: Set logging level (DEBUG, INFO, WARNING, ERROR)
+
+### Examples
+
+Test with existing cached articles:
+```bash
+python test_llm_prompts.py --num-articles 10
+```
+
+Fetch fresh articles and test:
+```bash
+python test_llm_prompts.py --fetch --num-articles 20
+```
+
+Test with Ollama and save detailed results:
+```bash
+python test_llm_prompts.py --fetch --num-articles 15 --output my_test_results.json
+```
+
+### Understanding the Output
+
+The test script will:
+1. Load or fetch the specified number of articles
+2. Test each article against all four LLM prompts
+3. Measure execution time for each prompt
+4. Display results and save them to a JSON file
+5. Print a summary with success rates and average timings
+
+Use the results to:
+- Verify your LLM is working correctly
+- Compare performance between different models
+- Fine-tune prompt wording for better results
+- Identify which articles cause problems
 
 ## Automation on macOS
 

@@ -17,6 +17,15 @@ openai:
   temperature: 0.1
 # Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
 
+ollama:
+  enabled: False  # Set to True to use Ollama instead of OpenAI
+  base_url: "http://localhost:11434"  # Default Ollama API endpoint
+  model: "llama3-lexi-uncensored"  # Model to use (e.g., llama3-lexi-uncensored, llama2, mistral)
+  complex_model: "llama3-lexi-uncensored"  # Model for complex tasks (spin_genders, clean_summary)
+  simple_model: "llama3-lexi-uncensored"  # Model for simple tasks (classification, short_summary)
+  temperature: 0.1
+  max_tokens: 4096  # Maximum tokens for completion
+
 localai:
   "enabled": False  # If we just want to use open ai we can disable the local ai, especially since it doesn't work yet
   "min_ram": 16  # Minimum RAM in GB
