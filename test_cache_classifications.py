@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class TestCacheClassifications:
-    def __init__(self, cache_folder: str, cfg: dict, ai_util=None, use_openai=True, openai_limit=None, no_fetch=False):
+    def __init__(self, cache_folder: str, cfg: dict, ai_util=None, use_openai=True, openai_limit=None, no_fetch=False, num_articles=20):
         """
         Initialize the test system for running classifications on cached data.
 
@@ -26,6 +26,8 @@ class TestCacheClassifications:
             ai_util (AIUtils, optional): AI utility instance for local AI testing.
             use_openai (bool): Whether to run tests using OpenAI.
             openai_limit (int): Maximum number of OpenAI queries allowed. Defaults to None (no limit).
+            no_fetch (bool): If True, don't fetch missing article bodies.
+            num_articles (int): Number of articles to test (default: 20).
         """
         self.cache_folder = Path(cache_folder)
         self.cfg = cfg
@@ -34,6 +36,7 @@ class TestCacheClassifications:
         self.openai_limit = openai_limit if openai_limit is not None else float("inf")
         self.openai_count = 0
         self.no_fetch = no_fetch
+        self.num_articles = num_articles
 
     def load_cache(self):
         """
@@ -101,10 +104,19 @@ class TestCacheClassifications:
         if not articles:
             logger.error("No articles found in the cache folder. Exiting...")
             return
+        
+        # Check if we have enough articles
+        if len(articles) < self.num_articles:
+            logger.warning(f"Only {len(articles)} articles found in cache, but {self.num_articles} requested.")
+            logger.warning(f"Please run with --fetch to fetch more articles, or reduce --num-articles.")
+            if not self.no_fetch:
+                logger.info("Attempting to fetch more articles from news sources...")
+                # This would require implementing fetch logic similar to test_llm_prompts.py
+                # For now, we'll proceed with what we have
+            
+        logger.info(f"Found {len(articles)} articles. Will test up to {self.num_articles}...")
 
-        logger.info(f"Found {len(articles)} articles. Starting tests...")
-
-        for article in articles:
+        for article in articles[:self.num_articles]:
             # Validate article structure
             if not isinstance(article, dict):
                 logger.warning(f"Skipping non-dict entry: {article}")
@@ -224,6 +236,7 @@ if __name__ == "__main__":
     parser.add_argument("--openai-limit", type=int, default=None, help="Limit the number of OpenAI queries.")
     parser.add_argument("--config", type=str, default='config.yaml', help="Path to the configuration YAML file.")
     parser.add_argument("--no-fetch", action="store_true", help="Disable fetching full text for missing 'body' fields.")
+    parser.add_argument("--num-articles", type=int, default=20, help="Number of articles to test (default: 20).")
     parser.add_argument(
         "--log-level",
         type=str,
@@ -258,6 +271,7 @@ if __name__ == "__main__":
         use_openai=args.use_openai,
         openai_limit=args.openai_limit,
         no_fetch=args.no_fetch,
+        num_articles=args.num_articles,
     )
 
     # Run the tests

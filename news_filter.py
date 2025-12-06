@@ -27,6 +27,7 @@ from ai_queries import (
     short_summary,
     clean_summary,
     spin_genders,
+    add_background_on_women,
 )
 from news_formatter import generate_text, generate_html
 
@@ -546,24 +547,58 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
 
 
 def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
-    # 4) Analyze detected PERSON names for female associations
+    """
+    Identify if article is about female leadership.
+    
+    Behavior can be controlled by cfg['female_leadership_detection']:
+    - use_local_checks: If True (default), check for female names and keywords first
+    - require_female_names: If True (default), only call LLM if female names detected
+    - require_leadership_keywords: If True (default), only call LLM if leadership keywords detected
+    
+    If use_local_checks is False, always calls classify_leadership directly.
+    """
+    # Get configuration settings
+    detection_cfg = cfg.get("female_leadership_detection", {})
+    use_local_checks = detection_cfg.get("use_local_checks", True)
+    require_female_names = detection_cfg.get("require_female_names", True)
+    require_leadership_keywords = detection_cfg.get("require_leadership_keywords", True)
+    
+    is_female_leader = False
+    leader_name = None
+    
+    if not use_local_checks:
+        # Skip local checks, directly call LLM
+        try:
+            is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
+        except Exception as e:
+            logger.warning(f"LLM classification error: {e}")
+        return is_female_leader, leader_name
+    
+    # Perform local checks
     female_names = [p for p in persons if gender_map.get(p) == "female"]
     has_kw = any(
         kw.lower() in body.lower()
         for kw in cfg.get("leadership_keywords", [])
     )
+    
     if female_names:
         stats["female_names"] += 1
     if has_kw:
         stats["keyword_hits"] += 1
-    # 5) Check if the article pertains to a female leader
-    is_female_leader = False
-    leader_name = None
-    if female_names and has_kw:
+    
+    # Determine if we should call the LLM based on configuration
+    should_call_llm = True
+    if require_female_names and not female_names:
+        should_call_llm = False
+    if require_leadership_keywords and not has_kw:
+        should_call_llm = False
+    
+    if should_call_llm:
         try:
             is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
         except Exception as e:
-            logger.warning(f"OpenAI classification error on': {e}")
+            logger.warning(f"LLM classification error: {e}")
+    
     return is_female_leader, leader_name
 
 

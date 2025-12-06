@@ -373,3 +373,37 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
 
     logger.info("Received spin_genders rewrite")
     return spun_result
+
+
+def add_background_on_women(text: str, cfg: dict, ai_util) -> str:
+    """
+    Add background information about women mentioned in the text, using Ollama, local AI, or OpenAI.
+    """
+    logger.debug("Requesting add_background_on_women enhancement")
+
+    # Prioritize: Ollama > Local AI > OpenAI
+    if ai_util.ollama_enabled:
+        logger.debug("Using Ollama for adding background on women")
+        prompt = cfg["prompts"]["add_background_on_women"]
+        enhanced_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="add_background_on_women")
+    elif ai_util.local_capable:
+        logger.debug("Using local AI for adding background on women")
+        prompt = cfg["prompts"]["add_background_on_women"]
+        enhanced_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+    elif ai_util.openai_client is not None:
+        logger.debug("Using OpenAI for adding background on women")
+        enhanced_result = open_ai_call(
+            cfg["prompts"]["add_background_on_women"],
+            text,
+            4000,
+            cfg,
+            ai_util.openai_client,
+            ai_util.openai_tokenizer,
+            task="add_background_on_women",
+        )
+    else:
+        logger.debug("Failed add_background_on_women: No LLM provider available")
+        return text
+
+    logger.info("Received add_background_on_women enhancement")
+    return enhanced_result

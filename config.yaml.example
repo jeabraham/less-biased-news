@@ -16,6 +16,7 @@ openai:
   short_summary_model: "gpt-3.5-turbo"
   clean_summary_model: "gpt-4"
   spin_genders_model: "gpt-4"
+  add_background_on_women_model: "gpt-4"
   max_tokens: 16000
   temperature: 0.1
 # Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
@@ -29,22 +30,21 @@ ollama:
   short_summary_model: "llama3-lexi-uncensored"
   clean_summary_model: "llama3-lexi-uncensored"
   spin_genders_model: "llama3-lexi-uncensored"
+  add_background_on_women_model: "llama3-lexi-uncensored"
   temperature: 0.1
   max_tokens: 4096  # Maximum tokens for completion
 
-localai:
-  "enabled": False  # If we just want to use open ai we can disable the local ai, especially since it doesn't work yet
-  "min_ram": 16  # Minimum RAM in GB
-  "min_cores": 8  # Minimum CPU cores
-  "max_input_tokens": 2048  # Maximum input tokens
-  "local_model": "Zyphra/Zamba2-2.7B-instruct"
-  "cpu_model_name": "Zyphra/Zamba2-2.7B-instruct"
-  # Also try facebook/bart-large-cnn
-  #"local_model": "EleutherAI/gpt-neo-2.7B"  # GPU model name
-  "local_model_path": "models/Zyphra"
-  #"cpu_model_name": "EleutherAI/gpt-neo-2.7B"  # CPU model name
-  "max_memory_mps": "6GB"  # at most 6 GB on the Vega 56
-  "max_memory_cpu": "58GB"   # the rest on system RAM
+# DEPRECATED: localai is deprecated in favor of Ollama for local LLM inference
+# localai:
+#   "enabled": False
+#   "min_ram": 16
+#   "min_cores": 8
+#   "max_input_tokens": 2048
+#   "local_model": "Zyphra/Zamba2-2.7B-instruct"
+#   "cpu_model_name": "Zyphra/Zamba2-2.7B-instruct"
+#   "local_model_path": "models/Zyphra"
+#   "max_memory_mps": "6GB"
+#   "max_memory_cpu": "58GB"
 
 local_summarization:
     "enabled": True
@@ -52,6 +52,12 @@ local_summarization:
 
 # The number of images to get from the news source to look for women.
 max_images: 3
+
+# Control how female leadership is identified
+female_leadership_detection:
+  use_local_checks: True  # If True, check for female names and leadership keywords before calling LLM
+  require_female_names: True  # Only call LLM if female names are detected
+  require_leadership_keywords: True  # Only call LLM if leadership keywords are detected
 
 
 # Prompts for OpenAI
@@ -89,6 +95,12 @@ prompts:
     prompts, boilerplate text, and distractions. It should be slightly shorter than the original, and no longer than 500 words.
     Ensure you include the core narrative, and the quotes and contributions of women, especially <leader_name>.
     ###
+  add_background_on_women: >-
+    Add relevant background information about the women mentioned in this article.
+    Focus on their achievements, qualifications, and contributions.
+    Keep the additions concise and relevant to the article's context.
+    Maintain the original article structure and tone.
+
 
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
