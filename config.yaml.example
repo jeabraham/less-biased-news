@@ -14,6 +14,7 @@ openai:
   # Task-specific models
   classify_leadership_model: "gpt-3.5-turbo"
   short_summary_model: "gpt-3.5-turbo"
+  clean_article_model: "gpt-3.5-turbo"
   clean_summary_model: "gpt-4"
   spin_genders_model: "gpt-4"
   add_background_on_women_model: "gpt-4"
@@ -28,6 +29,7 @@ ollama:
   # Task-specific models
   classify_leadership_model: "llama3.1:8b"
   short_summary_model: "glm4"
+  clean_article_model: "glm4"
   clean_summary_model: "glm4"
   spin_genders_model: "Godmoded/llama3-lexi-uncensored"
   add_background_on_women_model: "Godmoded/llama3-lexi-uncensored"

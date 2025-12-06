@@ -406,6 +406,40 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
     return spun_result
 
 
+def clean_article(text: str, cfg: dict, ai_util) -> str:
+    """
+    Clean an article by removing ads, subscription prompts, and other boilerplate, using Ollama, local AI, or OpenAI.
+    """
+    logger.debug("Requesting clean_article")
+
+    # Prioritize: Ollama > Local AI > OpenAI
+    if ai_util.ollama_enabled:
+        logger.debug("Using Ollama for cleaning article")
+        prompt = cfg["prompts"]["clean_article"]
+        cleaned_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="clean_article")
+    elif ai_util.local_capable:
+        logger.debug("Using local AI for cleaning article")
+        prompt = cfg["prompts"]["clean_article"]
+        cleaned_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+    elif ai_util.openai_client is not None:
+        logger.debug("Using OpenAI for cleaning article")
+        cleaned_result = open_ai_call(
+            cfg["prompts"]["clean_article"],
+            text,
+            4000,
+            cfg,
+            ai_util.openai_client,
+            ai_util.openai_tokenizer,
+            task="clean_article",
+        )
+    else:
+        logger.debug("Failed clean_article: No LLM provider available")
+        return text
+
+    logger.info("Received clean_article")
+    return cleaned_result
+
+
 def add_background_on_women(text: str, cfg: dict, ai_util) -> str:
     """
     Add background information about women mentioned in the text, using Ollama, local AI, or OpenAI.
