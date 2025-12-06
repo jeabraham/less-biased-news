@@ -30,7 +30,7 @@ This module processes news articles in several stages:
 
 ## Prerequisites
 
-- **Python 3.8+** (3.12 recommended)
+- **Python 3.12** (3.9 is too old, 3.13 doesn't yet have the binary wheels for some of the packages on MacOS.  Yay Python!, you always make things hard!)
 - Instructions are based on a Unix environment, such as **macOS**.
 
 ## Installation
