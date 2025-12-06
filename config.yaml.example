@@ -10,9 +10,12 @@ mediastack:
 
 openai:
   api_key: ""
-  model: "gpt-4"
-  complex_model: "gpt-4" # used for spin_genders and clean_summary
-  simple_model: "gpt-3.5-turbo"  # used for short_summary (although check local_summarization as well) and classification
+  model: "gpt-4"  # Default model if task-specific model not specified
+  # Task-specific models
+  classify_leadership_model: "gpt-3.5-turbo"
+  short_summary_model: "gpt-3.5-turbo"
+  clean_summary_model: "gpt-4"
+  spin_genders_model: "gpt-4"
   max_tokens: 16000
   temperature: 0.1
 # Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
@@ -20,9 +23,12 @@ openai:
 ollama:
   enabled: False  # Set to True to use Ollama instead of OpenAI
   base_url: "http://localhost:11434"  # Default Ollama API endpoint
-  model: "llama3-lexi-uncensored"  # Model to use (e.g., llama3-lexi-uncensored, llama2, mistral)
-  complex_model: "llama3-lexi-uncensored"  # Model for complex tasks (spin_genders, clean_summary)
-  simple_model: "llama3-lexi-uncensored"  # Model for simple tasks (classification, short_summary)
+  model: "llama3-lexi-uncensored"  # Default model if task-specific model not specified
+  # Task-specific models
+  classify_leadership_model: "llama3-lexi-uncensored"
+  short_summary_model: "llama3-lexi-uncensored"
+  clean_summary_model: "llama3-lexi-uncensored"
+  spin_genders_model: "llama3-lexi-uncensored"
   temperature: 0.1
   max_tokens: 4096  # Maximum tokens for completion
 

@@ -83,9 +83,12 @@ In `config.yaml`, update the Ollama section:
 ollama:
   enabled: True  # Set to True to use Ollama
   base_url: "http://localhost:11434"  # Default Ollama endpoint
-  model: "llama3-lexi-uncensored"  # Model for all tasks
-  complex_model: "llama3-lexi-uncensored"  # Model for spin_genders and clean_summary
-  simple_model: "llama3-lexi-uncensored"  # Model for classification and short_summary
+  model: "llama3-lexi-uncensored"  # Default model if task-specific not specified
+  # Task-specific models (optional, falls back to 'model' if not specified)
+  classify_leadership_model: "llama3-lexi-uncensored"
+  short_summary_model: "llama3-lexi-uncensored"
+  clean_summary_model: "llama3-lexi-uncensored"
+  spin_genders_model: "llama3-lexi-uncensored"
   temperature: 0.1
   max_tokens: 4096
 ```
@@ -158,9 +161,14 @@ You can use different models for different tasks:
 
 ```yaml
 ollama:
-  simple_model: "llama3"  # Fast model for classification and short summaries
-  complex_model: "llama3.1"  # Better model for complex rewrites
+  model: "llama3"  # Default model
+  classify_leadership_model: "llama3"  # Fast model for classification
+  short_summary_model: "llama3"  # Fast model for short summaries
+  clean_summary_model: "llama3.1"  # Better model for clean summaries
+  spin_genders_model: "llama3.1"  # Better model for gender spinning
 ```
+
+This allows you to optimize performance and quality by choosing faster models for simpler tasks and more capable models for complex rewrites.
 
 ## Troubleshooting
 

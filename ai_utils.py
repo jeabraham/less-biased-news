@@ -238,7 +238,7 @@ class AIUtils:
             logger.error(f"OpenAI API call failed: {e}")
             return "⚠️ OpenAI API fallback failed."
 
-    def _call_ollama_api(self, prompt: str, max_tokens: int = 200, temperature: float = None, complex: bool = False) -> str:
+    def _call_ollama_api(self, prompt: str, max_tokens: int = 200, temperature: float = None, task: str = None) -> str:
         """
         Perform API-based inference via Ollama.
         
@@ -246,7 +246,7 @@ class AIUtils:
             prompt: The prompt to send to the model
             max_tokens: Maximum number of tokens to generate
             temperature: Sampling temperature (None uses config default)
-            complex: If True, use complex_model, otherwise use simple_model
+            task: Task name (classify_leadership, short_summary, clean_summary, spin_genders)
             
         Returns:
             The generated text
@@ -255,11 +255,12 @@ class AIUtils:
             if not self.ollama_enabled or not self.ollama_client:
                 raise RuntimeError("Ollama is not enabled or not available")
             
-            # Select model based on complexity
-            if complex:
-                model_name = self.ollama_cfg.get("complex_model", self.ollama_cfg.get("model", "llama3-lexi-uncensored"))
+            # Select model based on task
+            if task:
+                model_key = f"{task}_model"
+                model_name = self.ollama_cfg.get(model_key, self.ollama_cfg.get("model", "llama3-lexi-uncensored"))
             else:
-                model_name = self.ollama_cfg.get("simple_model", self.ollama_cfg.get("model", "llama3-lexi-uncensored"))
+                model_name = self.ollama_cfg.get("model", "llama3-lexi-uncensored")
             
             if temperature is None:
                 temperature = self.ollama_cfg.get("temperature", 0.1)

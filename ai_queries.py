@@ -63,9 +63,17 @@ def truncate_for_openai(
 
 
 
-def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, complex: bool = False) -> str:
+def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, task: str = None) -> str:
     """
     Call the Ollama API for generating a response based on the given prompt and text.
+    
+    Args:
+        prompt: The prompt to send to the model
+        text: The text to process
+        return_tokens: Maximum number of tokens to generate
+        cfg: Configuration dictionary
+        ai_util: AIUtils instance
+        task: Task name (classify_leadership, short_summary, clean_summary, spin_genders)
     """
     try:
         # Approximate token truncation (4 chars per token)
@@ -78,7 +86,7 @@ def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, 
         logger.debug("Running Ollama call")
         
         temp = cfg.get("ollama", {}).get("temperature", 0.1)
-        result = ai_util._call_ollama_api(prompt_plus_text, max_tokens=return_tokens, temperature=temp, complex=complex)
+        result = ai_util._call_ollama_api(prompt_plus_text, max_tokens=return_tokens, temperature=temp, task=task)
         logger.debug(f"Ollama result: {result[:100]}...")
         return result
     except Exception as e:
@@ -86,16 +94,24 @@ def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, 
         return ""
 
 
-def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, tokenizer: PreTrainedTokenizer, complex: bool = False) -> str:
+def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, tokenizer: PreTrainedTokenizer, task: str = None) -> str:
     """
     Call the OpenAI API for generating a response based on the given prompt and text.
     Includes retry logic with exponential backoff for rate limit errors.
+    
+    Args:
+        prompt: The prompt to send to the model
+        text: The text to process
+        return_tokens: Maximum number of tokens to generate
+        cfg: Configuration dictionary
+        client: OpenAI client
+        tokenizer: Tokenizer for the model
+        task: Task name (classify_leadership, short_summary, clean_summary, spin_genders)
     """
     model = cfg["openai"].get("model", "gpt-3.5-turbo")
-    if complex:
-        model = cfg["openai"].get("complex_model", model)
-    else:
-        model = cfg["openai"].get("simple_model", model)
+    if task:
+        model_key = f"{task}_model"
+        model = cfg["openai"].get(model_key, model)
     max_toks = cfg["openai"]["max_tokens"]
     temp = cfg["openai"].get("temperature", 0)
     max_retries = 3  # Maximum number of retry attempts
@@ -202,7 +218,7 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
     if ai_util.ollama_enabled:
         logger.debug("Using Ollama for classification")
         prompt = cfg["prompts"]["classification"]
-        result = ollama_call(prompt, text, 10, cfg, ai_util, complex=False)
+        result = ollama_call(prompt, text, 10, cfg, ai_util, task="classify_leadership")
     elif ai_util.local_capable:
         logger.debug("Using local AI for classification")
         prompt = cfg["prompts"]["classification"]
@@ -213,7 +229,7 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
             cfg["prompts"]["classification"], text, 10, cfg,
             ai_util.openai_client,
             ai_util.openai_tokenizer,
-            complex=False,
+            task="classify_leadership",
         )
     else:
         logger.debug("Failed classification: No LLM provider available")
@@ -243,7 +259,7 @@ def short_summary(text: str, cfg: dict, ai_util) -> str:
     if ai_util.ollama_enabled:
         logger.debug("Using Ollama for short summary")
         prompt = cfg["prompts"].get("short_summary", "")
-        summary = ollama_call(prompt, text, 200, cfg, ai_util, complex=False)
+        summary = ollama_call(prompt, text, 200, cfg, ai_util, task="short_summary")
     elif ai_util.local_summarization:
         logger.debug("Using Hugging Face summarization for short summary")
         try:
@@ -259,7 +275,7 @@ def short_summary(text: str, cfg: dict, ai_util) -> str:
     elif ai_util.openai_client is not None:
         logger.debug("Using OpenAI for short summary")
         summary = open_ai_call(
-            cfg["prompts"].get("short_summary", ""), text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer
+            cfg["prompts"].get("short_summary", ""), text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer, task="short_summary"
         )
         if summary == "":
             logger.debug("OpenAI returned an empty summary, trying fallback")
@@ -303,7 +319,7 @@ def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str
     # Prioritize: Ollama > Local AI > OpenAI
     if ai_util.ollama_enabled:
         logger.debug("Using Ollama for clean summary")
-        cleaned_summary = ollama_call(prompt, text, 4000, cfg, ai_util, complex=True)
+        cleaned_summary = ollama_call(prompt, text, 4000, cfg, ai_util, task="clean_summary")
     elif ai_util.local_capable:
         logger.debug("Using local AI for clean summary")
         cleaned_summary = run_local_call(prompt, text, 500, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
@@ -316,7 +332,7 @@ def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str
             cfg,
             ai_util.openai_client,
             ai_util.openai_tokenizer,
-            complex=True,
+            task="clean_summary",
         )
     else:
         logger.debug("Failed clean summary: No LLM provider available")
@@ -335,7 +351,7 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
     if ai_util.ollama_enabled:
         logger.debug("Using Ollama for gender spinning")
         prompt = cfg["prompts"]["spin_genders"]
-        spun_result = ollama_call(prompt, text, 4000, cfg, ai_util, complex=True)
+        spun_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="spin_genders")
     elif ai_util.local_capable:
         logger.debug("Using local AI for gender spinning")
         prompt = cfg["prompts"]["spin_genders"]
@@ -349,7 +365,7 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
             cfg,
             ai_util.openai_client,
             ai_util.openai_tokenizer,
-            complex=True,
+            task="spin_genders",
         )
     else:
         logger.debug("Failed spin_genders: No LLM provider available")

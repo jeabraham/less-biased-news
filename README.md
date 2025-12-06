@@ -142,8 +142,11 @@ ollama:
   enabled: True
   base_url: "http://localhost:11434"
   model: "llama3-lexi-uncensored"
-  complex_model: "llama3-lexi-uncensored"
-  simple_model: "llama3-lexi-uncensored"
+  # Task-specific models (optional, falls back to 'model' if not specified)
+  classify_leadership_model: "llama3-lexi-uncensored"
+  short_summary_model: "llama3-lexi-uncensored"
+  clean_summary_model: "llama3-lexi-uncensored"
+  spin_genders_model: "llama3-lexi-uncensored"
   temperature: 0.1
   max_tokens: 4096
 
