@@ -60,7 +60,11 @@ class AIUtils:
                 self.openai_client = openai_pkg
                 self.openai_tokenizer = tiktoken.encoding_for_model(self.openai_cfg.get("model", "gpt-3.5-turbo"))
             else:
-                logger.warning("No OpenAI API key provided and Ollama not enabled")
+                # Only warn if Ollama config says it should be enabled but package is missing
+                if self.ollama_cfg.get("enabled", False) and not OLLAMA_AVAILABLE:
+                    logger.warning("Ollama is enabled in config but ollama package is not installed. Install with: pip install ollama")
+                elif not self.ollama_cfg.get("enabled", False):
+                    logger.warning("No OpenAI API key provided and Ollama not enabled")
                 self.openai_client = None
                 self.openai_tokenizer = None
         else:

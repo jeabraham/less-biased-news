@@ -149,7 +149,7 @@ class TestCacheClassifications:
                 start_time = time.time()
                 try:
                     is_leader, leader_name = classify_leadership(
-                        body, self.cfg, client=openai_client, ai_util=self.ai_util
+                        body, self.cfg, self.ai_util
                     )
                     result["classification"] = {"is_leader": is_leader, "leader_name": leader_name}
                     self.openai_count += 1
@@ -162,7 +162,7 @@ class TestCacheClassifications:
                 start_time = time.time()
                 try:
                     result["short_summary"] = short_summary(
-                        body, self.cfg, client=openai_client, ai_util=self.ai_util
+                        body, self.cfg, self.ai_util
                     )
                     self.openai_count += 1
                 except Exception as e:
@@ -175,7 +175,7 @@ class TestCacheClassifications:
                 try:
                     leader_name = result["classification"].get("leader_name") if result["classification"] else None
                     result["clean_summary"] = clean_summary(
-                        body, self.cfg, client=openai_client, ai_util=self.ai_util, leader_name=leader_name
+                        body, self.cfg, self.ai_util, leader_name=leader_name
                     )
                     self.openai_count += 1
                 except Exception as e:
@@ -186,7 +186,7 @@ class TestCacheClassifications:
             if self.use_openai or self.ai_util:
                 start_time = time.time()
                 try:
-                    result["spin_genders"] = spin_genders(body, self.cfg, client=openai_client, ai_util=self.ai_util)
+                    result["spin_genders"] = spin_genders(body, self.cfg, self.ai_util)
                     self.openai_count += 1
                 except Exception as e:
                     logger.error(f"Error running spin_genders: {e}")
