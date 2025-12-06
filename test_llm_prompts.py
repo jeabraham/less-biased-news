@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def load_config(path: str = "config.yaml") -> dict:
-    """Load configuration from YAML file."""
+    """
+    Load configuration from YAML file.
+    Note: This duplicates news_filter.load_config() to avoid heavy dependencies.
+    """
     logger.debug(f"Loading config from {path}")
     if not os.path.exists(path):
         logger.error(f"Config file not found: {path}")
