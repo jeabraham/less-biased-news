@@ -115,7 +115,8 @@ class TestCacheClassifications:
             for query_cfg in queries:
                 try:
                     logger.info(f"Fetching from source: {query_cfg.get('name', 'Unknown')}")
-                    articles = fetch_articles(query_cfg, self.cfg)
+                    # Use the new fetch_articles function
+                    articles = fetch_articles(query_cfg, self.cfg, use_cache=False)
                     
                     # Fetch full text for each article
                     for art in articles:
@@ -152,7 +153,10 @@ class TestCacheClassifications:
             return all_articles[:num_to_fetch]
             
         except ImportError as e:
-            logger.error(f"Could not import news_filter for fetching: {e}")
+            logger.error(f"Could not import fetch_articles from news_filter: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error in fetch_articles_from_sources: {e}")
             return []
 
     def run_tests(self):

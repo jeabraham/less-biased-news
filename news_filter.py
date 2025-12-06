@@ -365,6 +365,35 @@ def replace_male_pronouns_with_neutral(text):
 
 # ─── Fetch & Filter ────────────────────────────────────────────────────
 
+def fetch_articles(qcfg: dict, cfg: dict, use_cache: bool = False) -> list:
+    """
+    Fetch articles from a single news source based on query configuration.
+    
+    Args:
+        qcfg: Query-specific configuration dictionary containing provider, query parameters, etc.
+        cfg: Global configuration dictionary
+        use_cache: Whether to use cached results if available
+        
+    Returns:
+        list: List of raw article dictionaries fetched from the news source
+    """
+    name = qcfg.get("name", "Unknown")
+    logger.info(f"Fetching articles for query '{name}'")
+    
+    # Determine which provider to use
+    provider = qcfg.get("provider", "newsapi").lower()
+    
+    if provider == "mediastack":
+        raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
+    else:
+        # Initialize NewsAPI client for newsapi provider
+        newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
+        raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
+    
+    logger.info(f"Fetched {len(raw_articles)} articles from {provider} for '{name}'")
+    return raw_articles
+
+
 def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False) -> dict:
     logger.info("Initializing NewsAPI client")
     newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
@@ -420,11 +449,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         cached_titles = {cached_art.get("title", "") for cached_art in (cached_items or [])}
 
         # ─── Fetch Raw Articles From the Right Source ────────────────
-        provider = qcfg.get("provider", "newsapi").lower()
-        if provider == "mediastack":
-            raw_articles = fetch_mediastack(cfg, qcfg, use_cache=use_cache)
-        else:
-            raw_articles = fetch_newsapi(cfg, name, qcfg, newsapi)
+        raw_articles = fetch_articles(qcfg, cfg, use_cache=use_cache)
 
         # ─── Extract Names, Bodies, and Images ────────────────
         bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp, max_images=max_images)
