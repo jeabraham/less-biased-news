@@ -27,12 +27,12 @@ ollama:
   base_url: "http://localhost:11434"  # Default Ollama API endpoint
   model: "llama3.1:8b"  # Default model if task-specific model not specified
   # Task-specific models
+  add_background_on_women_model: "llama3.1:8b"
   classify_leadership_model: "llama3.1:8b"
-  short_summary_model: "glm4"
+  short_summary_model: "llama3.1:8b"      # (swap away from glm4)
   clean_article_model: "glm4"
   clean_summary_model: "glm4"
-  spin_genders_model: "dolphin3"
-  add_background_on_women_model: "glm4"
+  spin_genders_model: "qwen2.5:7b"       # (replace dolphin3)
   temperature: 0.1
   max_tokens: 8192  # Maximum tokens for completion
 
@@ -125,86 +125,65 @@ prompts:
     Article:
 
   spin_genders: >-
-    You are rewriting a news article with a mild feminist reframing. Your goal is to adjust emphasis and tone, while preserving the original meaning, facts, and structure.
-
-    Follow these rules:
-
-    1. **Emphasize Women**
-       - Preserve the full names of all women or girls mentioned.
-       - If a woman is quoted, keep her full quote intact.
-       - Strengthen her presence: expand her role slightly, amplify her agency, and give her actions a touch more importance.
-       - Do not invent new events or alter factual information.
-
-    2. **De-Emphasize Men**
-       - If a man is mentioned and his name is not essential to the meaning, replace his name with a neutral phrase such as “a spokesperson,” “an official,” “a representative,” or “a city staff member.”
-       - Remove masculine pronouns when possible without harming clarity.
-       - If a man’s name must stay (e.g., key public figure), keep the surname, replace any first name with an initial, and reduce descriptive detail and avoid adding any background about him.
-
-    3. **Tone & Meaning**
-       - Maintain journalistic clarity and neutrality.
-       - Keep all facts intact.
-       - The feminist reframing should be gentle, subtle, and grounded — not ideological or exaggerated.
-
-    4. **Do NOT add biographical background in this stage.**
-       - That will be handled later.
-
-    5. **Length**
-       - Keep the length similar to the original unless the original is extremely short.
-
-    Now rewrite the following article under these rules:
-
-    —
-    **Original article:**
-
-  add_background_on_women: >-
-    Your task is to add accurate, commonly known background information about women who appear in this article, but only if they are public figures.
-
-    Follow these rules carefully:
-
-    1. **Identify Women**
-       - Identify all named women or girls in the article.
-       - Determine if each one is a public figure, such as:
-         • elected official
-         • political candidate
-         • public servant
-         • journalist
-         • activist
-         • celebrity
-         • senior academic
-         • other widely known professional roles
-
-    2. **Add Background (Women Only)**
-       - For each woman who is a public figure, add a **brief, factual, one-sentence background** immediately after her first mention.
-       - This sentence must reflect widely known public information only.
-       - Do not create fictional details or speculation.
-
-    3. **Do NOT Add Background About Men**
-       - Men should remain anonymized or de-emphasized exactly as written in the Stage 1 version.
-       - Do not restore male names that were removed.
-
-    4. **Preserve Meaning**
-       - Do not change the article’s events, quotes, or narrative flow.
-       - Only insert factual background sentences about women.
-
-    5. **Keep It Subtle**
-       - Tone should remain journalistic and neutral.
-
-    Now take the following Stage 1 rewritten article and perform only the additions described above:
-
-  clean_summary: >-
-    Create a slightly shorter and cleaner version of the following article.
-
-    The article is already cleaned of ads and boilerplate. Focus only on tightening the narrative while preserving meaning.
+    Rewrite the following news article with a *mild feminist reframing*, while keeping all facts and meaning intact.
 
     Rules:
-    - Keep all quotes and names exactly as written.
-    - Preserve and emphasize the contributions of women, especially <leader_name>.
-    - Preserve all essential facts and the overall storyline.
-    - Do NOT add new information or reinterpret events.
-    - Do NOT add headers, markdown, or commentary.
-    - The result must be no longer than 500 words.
+
+    1. Emphasize Women
+       - Keep full names of all women or girls.
+       - Preserve all quotes by women.
+       - Lightly strengthen their agency or presence (but do not invent facts).
+
+    2. De-Emphasize Men
+       - Replace non-essential male names with neutral roles (e.g., “a spokesperson,” “an official”).
+       - Remove masculine pronouns when possible without harming clarity.
+       - If a male public figure’s name must remain, use only the initial + surname (e.g., “J. Smith”).
+
+    3. Keep the article factual, neutral, and similar in length.
+
+    4. Do NOT add background information about anyone.
+
+    Now rewrite the article:
+
+    Original article:
+
+  add_background_on_women: >-
+
+    Add one sentence of accurate, widely known background information after the first mention of each woman in the article, *but only if she is a public figure*.
+
+    Public figures include:
+    - elected officials
+    - political candidates
+    - public servants
+    - journalists
+    - activists
+    - celebrities
+    - senior academics
+    - well-known professionals
+
+    Rules:
+    - Add background ONLY for women.
+    - Do NOT add or restore background about men.
+    - Insert each background sentence immediately after her first appearance.
+    - Do not change any events, quotes, or structure.
+    - Remain neutral and factual. No speculation.
 
     Article:
+
+    clean_summary: >-
+      Create a slightly shorter and cleaner version of the following article.
+
+      The article is already cleaned of ads and boilerplate. Focus only on tightening the narrative while preserving meaning.
+
+      Rules:
+      - Keep all quotes and names exactly as written.
+      - Preserve and emphasize the contributions of women, especially <leader_name>.
+      - Preserve all essential facts and the overall storyline.
+      - Do NOT add new information or reinterpret events.
+      - Do NOT add headers, markdown, or commentary.
+      - The result must be no longer than 500 words.
+
+      Article:
 
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
