@@ -39,16 +39,14 @@ ollama:
   enabled: True  # Set to True to use Ollama instead of OpenAI
   #base_url: "http://brooks.office.hbaspecto.com:11434"  # Default Ollama API endpoint
   base_url: "http://localhost:11434"  # Default Ollama API endpoint
-  model: "llama3.1:8b-instruct-q4_0"  # Default model if task-specific model not specified
+  model: "llama3.1:8b-instruct-q4_K_M"  # Default model if task-specific model not specified
   # Task-specific models
-  #clean_article_model: "llama3.1:8b"
-  clean_article_model: "llama3.1:8b-instruct-q4_0"
-  short_summary_model: "llama3.1:8b-instruct-q4_0"
-  #clean_summary_model: "llama3.1:8b"
-  clean_summary_model: "llama3.1:8b-instruct-q4_0"  # or llama3.1:8b
-  add_background_on_women_model: "llama3.1:8b-instruct-q4_0"
-  classification_model: "llama3.1:8b"
-  spin_genders_model: "llama3.1:8b-instruct-q4_0"
+  clean_article_model: "llama3.1:8b-instruct-q4_K_M"
+  short_summary_model: "llama3.1:8b-instruct-q4_K_M"
+  clean_summary_model: "llama3.1:8b-instruct-q4_K_M"  # or llama3.1:8b
+  add_background_on_women_model: "llama3.1:8b-instruct-q4_K_M"
+  classification_model: "llama3.1:8b-instruct-q4_K_M"
+  spin_genders_model: "interstellarninja/hermes-2-pro-llama-3-8b:latest"
 
   # fallback models
   spin_genders_fallback: "dolphin3:latest"
@@ -139,30 +137,33 @@ prompts:
     Article:
 
   spin_genders: >-
-    You will receive an article. You will transform it, not introduce it.
+    You will transform the following news article. The transformation must
+    preserve all facts exactly as written.
 
-    Do not write any introductory phrase such as “Here is the rewritten article,”
-    “Sure,” “Alright,” “As requested,” or anything similar.
+    Before you begin, read these rules carefully:
 
-    Begin your output with the first word of the transformed article. No title. No label.
-    No explanation.
+    NON-NEGOTIABLE FACT RULES:
+    1. Do NOT change any gender, sex, family role, or identity.
+    2. Do NOT change who was injured, who died, who survived, or who performed any action.
+    3. Do NOT change the sequence of events, the causal relations, or the results.
+    4. Do NOT change or paraphrase any quotes.
+    5. Do NOT insert new events, new actions, new motives, or new participants.
 
-    Transformation instructions:
+    TRANSFORMATION RULES:
+    6. Apply a mild feminist reframing while preserving all facts.
+    7. Preserve all full names of women exactly as written.
+    8. Preserve all quotes spoken by women exactly.
+    9. You may replace non-essential male names with neutral roles such as
+       “a spokesperson,” “a city official,” or “a representative.”
+    10. If a male name is required for factual accuracy, leave it unchanged.
+    11. Do NOT alter male pronouns. They will be handled later.
+    12. Keep the length and structure similar to the original.
+    13. Do NOT add commentary, biography, ideology, or background.
+    14. Do NOT summarize or shorten unless necessary for clarity.
 
-    • Apply a mild feminist reframing while keeping every fact, event, quote, identity, and outcome exactly the same.
-    • Do not change anyone’s gender, sex, family role, injury, death, or involvement.
-    • Emphasize women by preserving their full names and quotes and giving them slightly stronger presence in neutral narration (without adding events or claims).
-    • De-emphasize men by replacing non-essential male names with neutral roles such as “a spokesperson,” “a city official,” or “a representative.”
-    • If a male name is essential for factual accuracy, leave it unchanged.
-    • Do not alter masculine pronouns; they will be handled later.
-    • Do not modify or create any quotes.
-    • Do not add commentary, biography, ideology, opinion, or background.
-    • Keep the length and structure similar to the original.
-
-    After finishing the transformation:
-    → Output only the transformed article.
-    → Do not add any introductory or concluding phrases.
-    → Begin immediately with the first word of the transformed article.
+    OUTPUT RULES:
+    15. Output only the transformed article.
+    16. Do NOT add any introduction, explanation, commentary, or section headings.
 
     ARTICLE:
 
@@ -186,6 +187,36 @@ prompts:
     - Do NOT add any explanation of what you are doing.
     - Output only the modified article.
     - Begin your output with the first word of the revised article.
+
+    ARTICLE:
+
+
+  clean_summary: |
+    Create a cleaner, tighter version of the article below.
+
+    The input article has already been cleaned of ads and boilerplate.
+
+    Two modes:
+    1. If the article is a normal news report with real facts, real people, and real quotes:
+       - Preserve all quotes exactly.
+       - Preserve all names and factual details.
+       - Keep the structure the same.
+       - Only tighten wording and reduce redundancy.
+
+    2. If the article is obviously promotional, repetitive, low-information,
+       or not a legitimate news report (e.g., SEO spam about casinos,
+       investments, crypto, miracle cures, or generic lifestyle advice):
+       - Remove repetitive filler and marketing fluff.
+       - Preserve only concrete factual statements, if any.
+       - Produce a concise, factual summary under 500 words.
+
+    General rules:
+    • Emphasize the contributions of women when they appear.
+    • Do not add new facts or interpretations.
+    • Do not fabricate quotes or names.
+    • Do not add commentary, headings, or markdown.
+    • Final output must be under 500 words.
+    • Begin the output with the first word of the rewritten article.
 
     ARTICLE:
 
