@@ -310,8 +310,6 @@ def expire_cache(file_path: str, expire_days: int):
     :param file_path: Path to the cache file
     :param expire_days: Number of days after which to expire entries
     """
-    from datetime import datetime
-    
     if not os.path.exists(file_path):
         logger.debug(f"Cache file {file_path} does not exist, nothing to expire")
         return
@@ -361,7 +359,6 @@ def save_cache(file_path: str, data: dict):
     existing_cache = load_cache(file_path)
     
     # Get current timestamp
-    from datetime import datetime
     current_time = datetime.now().isoformat()
     
     # Merge new articles with existing ones

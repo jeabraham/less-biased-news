@@ -14,7 +14,6 @@ import json
 import tempfile
 import shutil
 from datetime import datetime, timedelta, date
-from pathlib import Path
 
 # Inline cache functions for testing (copied from news_filter.py to avoid dependencies)
 
