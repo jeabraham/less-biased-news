@@ -247,7 +247,7 @@ test-ollama:
 try: \
     data=json.load(sys.stdin); \
     print(data.get('response', 'No response')) \
-except: \
+except (ValueError, KeyError, TypeError): \
     print('Parse error')" 2>/dev/null) ; \
 	fi ; \
 	if [ "$$result" = "Parse error" ]; then \
