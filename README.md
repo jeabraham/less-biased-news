@@ -161,11 +161,13 @@ This project has **full support for [Ollama](https://ollama.ai/)** as a local LL
 - ✅ **Easy setup** - Simpler than transformers-based models
 - ✅ **Task-specific models** - Configure different models for different operations
 - ✅ **Fallback support** - Automatic fallback between models
-- ✅ **Full feature parity** - All four LLM operations supported:
+- ✅ **Full feature parity** - All six LLM operations supported:
   - Article classification (leadership detection)
   - Short summaries
   - Clean/detailed summaries  
   - Gender-focused article rewriting ("spinning")
+  - Article cleaning (removing ads/boilerplate)
+  - Background context addition
 
 **Ubuntu users:** Simply run `make install-ollama` and `make pull-ollama-model`.
 
@@ -201,7 +203,7 @@ By default, it runs on `http://localhost:11434`.
 
 ### 4. Configure the Project
 
-In your `config.yaml`, enable Ollama and disable OpenAI:
+In your `config.yaml`, enable Ollama and disable OpenAI. Here's a simplified example showing diverse models:
 
 ```yaml
 ollama:
@@ -224,6 +226,8 @@ ollama:
 openai:
   api_key: ""  # Leave empty when using Ollama
 ```
+
+**Note:** The `config.yaml.example` file contains additional advanced models and configurations. Start with these simpler models, then customize based on your needs and available resources.
 
 ### 5. Test Ollama
 

@@ -207,16 +207,17 @@ start-ollama:
 stop-ollama:
 	@echo "$(BLUE)Stopping Ollama service...$(NC)"
 	@if [ -f ollama.pid ]; then \
-		pid=$$(cat ollama.pid) ; \
-		if [ -n "$$pid" ] && [ "$$pid" -gt 0 ] 2>/dev/null; then \
-			if kill -0 $$pid 2>/dev/null; then \
-				kill $$pid 2>/dev/null && echo "$(GREEN)✓ Ollama service stopped (PID: $$pid)$(NC)" ; \
-			else \
-				echo "$(YELLOW)Process $$pid not running$(NC)" ; \
-			fi \
-		else \
-			echo "$(RED)✗ Invalid PID in ollama.pid$(NC)" ; \
-		fi ; \
+		pid=$$(cat ollama.pid 2>/dev/null | tr -d ' \n') ; \
+		case "$$pid" in \
+			''|*[!0-9]*) echo "$(RED)✗ Invalid PID in ollama.pid: '$$pid'$(NC)" ;; \
+			*) \
+				if [ "$$pid" -gt 0 ] 2>/dev/null && kill -0 $$pid 2>/dev/null; then \
+					kill $$pid 2>/dev/null && echo "$(GREEN)✓ Ollama service stopped (PID: $$pid)$(NC)" ; \
+				else \
+					echo "$(YELLOW)Process $$pid not running$(NC)" ; \
+				fi \
+			;; \
+		esac ; \
 		rm -f ollama.pid ; \
 	else \
 		echo "$(YELLOW)No Ollama PID file found$(NC)" ; \
@@ -235,12 +236,28 @@ test-ollama:
 		"prompt": "Say hello in one word", \
 		"stream": false \
 	}') ; \
-	if command -v jq >/dev/null 2>&1; then \
-		echo "Response: $$(echo "$$response" | jq -r '.response // "No response"')" ; \
-	else \
-		echo "Response: $$(echo "$$response" | $(PYTHON) -c "import sys, json; data=json.load(sys.stdin); print(data.get('response', 'No response'))")" ; \
+	if [ -z "$$response" ]; then \
+		echo "$(RED)✗ No response from Ollama$(NC)" ; \
+		exit 1 ; \
 	fi ; \
-	echo "$(GREEN)✓ Ollama is working$(NC)"
+	if command -v jq >/dev/null 2>&1; then \
+		result=$$(echo "$$response" | jq -r '.response // "No response"' 2>/dev/null || echo "Parse error") ; \
+	else \
+		result=$$(echo "$$response" | $(PYTHON) -c "import sys, json; \
+try: \
+    data=json.load(sys.stdin); \
+    print(data.get('response', 'No response')) \
+except: \
+    print('Parse error')" 2>/dev/null) ; \
+	fi ; \
+	if [ "$$result" = "Parse error" ]; then \
+		echo "$(RED)✗ Invalid JSON response from Ollama$(NC)" ; \
+		echo "Raw response: $$response" ; \
+		exit 1 ; \
+	else \
+		echo "Response: $$result" ; \
+		echo "$(GREEN)✓ Ollama is working$(NC)" ; \
+	fi
 
 # Setup configuration file
 setup-config:
