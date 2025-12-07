@@ -8,6 +8,7 @@ from deepface import DeepFace
 from facenet_pytorch import MTCNN
 import torch
 import cv2
+from timing_tracker import get_timing_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +92,10 @@ def analyze_image_gender(image_url: str):
         - A list of detected faces (or None if no faces are detected).
         - A tuple containing the image dimensions (width, height) or None if unavailable.
     """
-    start = time.time()
-    logger.info(f"[ImageGender] Starting analysis for {image_url}")
+    tracker = get_timing_tracker()
+    with tracker.time_task("image_analysis"):
+        start = time.time()
+        logger.info(f"[ImageGender] Starting analysis for {image_url}")
 
     try:
         # 1) Download and load the image
@@ -179,5 +182,5 @@ def analyze_image_gender(image_url: str):
         logger.debug(f"[ImageGender] Face {i}: {face_rec}")
         faces.append(face_rec)
 
-    logger.info(f"[ImageGender] Completed in {time.time() - start:.2f}s: {len(faces)} valid face(s)")
-    return faces, (W, H)
+        logger.info(f"[ImageGender] Completed in {time.time() - start:.2f}s: {len(faces)} valid face(s)")
+        return faces, (W, H)

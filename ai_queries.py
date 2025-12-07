@@ -11,8 +11,42 @@ logger = logging.getLogger(__name__)
 import tiktoken
 
 from summarization import summarize_text_using_local_model
+from timing_tracker import get_timing_tracker
 
 logger = logging.getLogger(__name__)
+
+
+def _get_model_name(cfg: dict, task: str = None) -> str:
+    """
+    Get the model name being used for a specific task.
+    
+    Args:
+        cfg: Configuration dictionary
+        task: Task name (classify_leadership, short_summary, clean_summary, spin_genders, etc.)
+    
+    Returns:
+        String identifying the model (e.g., "gpt-4", "qwen-2", "local-model")
+    """
+    # Check Ollama first (highest priority)
+    if cfg.get("ollama", {}).get("enabled", False):
+        if task:
+            model_key = f"{task}_model"
+            return cfg.get("ollama", {}).get(model_key, cfg.get("ollama", {}).get("model", "ollama"))
+        return cfg.get("ollama", {}).get("model", "ollama")
+    
+    # Check local AI
+    if cfg.get("localai", {}).get("enabled", False):
+        return cfg.get("localai", {}).get("model", "local-model")
+    
+    # Check OpenAI
+    if cfg.get("openai", {}).get("api_key"):
+        if task:
+            model_key = f"{task}_model"
+            return cfg.get("openai", {}).get(model_key, cfg.get("openai", {}).get("model", "gpt-3.5-turbo"))
+        return cfg.get("openai", {}).get("model", "gpt-3.5-turbo")
+    
+    return "unknown"
+
 
 def truncate_for_openai(
     prompt: str,
@@ -273,85 +307,93 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
     """
     Classify text to determine if it mentions a leader, using Ollama, local AI, or OpenAI.
     """
-    logger.debug("Running zero-shot classification for leadership")
-
-    # Prioritize: Ollama > Local AI > OpenAI
-    if ai_util.ollama_enabled:
-        logger.debug("Using Ollama for classification")
-        prompt = cfg["prompts"]["classification"]
-        result = ollama_call(prompt, text, 10, cfg, ai_util, task="classify_leadership")
-    elif ai_util.local_capable:
-        logger.debug("Using local AI for classification")
-        prompt = cfg["prompts"]["classification"]
-        result = run_local_call(prompt, text, 10, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openai_client is not None:
-        logger.debug("Using OpenAI for classification")
-        result = open_ai_call(
-            cfg["prompts"]["classification"], text, 10, cfg,
-            ai_util.openai_client,
-            ai_util.openai_tokenizer,
-            task="classify_leadership",
-        )
-    else:
-        logger.debug("Failed classification: No LLM provider available")
-        return False, None
+    tracker = get_timing_tracker()
+    model_name = _get_model_name(cfg, "classify_leadership")
     
-    # Process the result
-    if result.lower().startswith("yes"):
-        is_leader = True
-        parts = result.split(" ", 1)
-        leader_name = (
-            parts[1].strip(string.punctuation + "—").strip()
-            if len(parts) > 1
-            else ""
-        )
-    else:
-        is_leader = False
-        leader_name = ""
-    return is_leader, leader_name
+    with tracker.time_task("classify_leadership", model_name):
+        logger.debug("Running zero-shot classification for leadership")
+
+        # Prioritize: Ollama > Local AI > OpenAI
+        if ai_util.ollama_enabled:
+            logger.debug("Using Ollama for classification")
+            prompt = cfg["prompts"]["classification"]
+            result = ollama_call(prompt, text, 10, cfg, ai_util, task="classify_leadership")
+        elif ai_util.local_capable:
+            logger.debug("Using local AI for classification")
+            prompt = cfg["prompts"]["classification"]
+            result = run_local_call(prompt, text, 10, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+        elif ai_util.openai_client is not None:
+            logger.debug("Using OpenAI for classification")
+            result = open_ai_call(
+                cfg["prompts"]["classification"], text, 10, cfg,
+                ai_util.openai_client,
+                ai_util.openai_tokenizer,
+                task="classify_leadership",
+            )
+        else:
+            logger.debug("Failed classification: No LLM provider available")
+            return False, None
+        
+        # Process the result
+        if result.lower().startswith("yes"):
+            is_leader = True
+            parts = result.split(" ", 1)
+            leader_name = (
+                parts[1].strip(string.punctuation + "—").strip()
+                if len(parts) > 1
+                else ""
+            )
+        else:
+            is_leader = False
+            leader_name = ""
+        return is_leader, leader_name
 
 def short_summary(text: str, cfg: dict, ai_util) -> str:
     """
     Generate a short summary of the text, using Ollama, local AI, or Hugging Face's local summarization.
     """
-    logger.debug("Requesting short summary")
+    tracker = get_timing_tracker()
+    model_name = _get_model_name(cfg, "short_summary")
+    
+    with tracker.time_task("short_summary", model_name):
+        logger.debug("Requesting short summary")
 
-    # Prioritize: Ollama > Local summarization > Local AI > OpenAI
-    if ai_util.ollama_enabled:
-        logger.debug("Using Ollama for short summary")
-        prompt = cfg["prompts"].get("short_summary", "")
-        summary = ollama_call(prompt, text, 200, cfg, ai_util, task="short_summary")
-    elif ai_util.local_summarization:
-        logger.debug("Using Hugging Face summarization for short summary")
-        try:
-            summary = summarize_text_using_local_model(input_text=text, model=ai_util.local_summarization_model, max_length=200, min_length=30)
-        except Exception as e:
-            logger.error(f"Error during Hugging Face summarization: {e}")
-            return ""
-    elif ai_util.local_capable:
-        logger.debug("Using local AI for short summary")
-        prompt = cfg["prompts"].get("short_summary", "")
-        summary = run_local_call(prompt, text, 200, cfg, ai_util.local_model, ai_util.local_tokenizer,
-                                 ai_util.local_model_device)
-    elif ai_util.openai_client is not None:
-        logger.debug("Using OpenAI for short summary")
-        summary = open_ai_call(
-            cfg["prompts"].get("short_summary", ""), text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer, task="short_summary"
-        )
-        if summary == "":
-            logger.debug("OpenAI returned an empty summary, trying fallback")
+        # Prioritize: Ollama > Local summarization > Local AI > OpenAI
+        if ai_util.ollama_enabled:
+            logger.debug("Using Ollama for short summary")
+            prompt = cfg["prompts"].get("short_summary", "")
+            summary = ollama_call(prompt, text, 200, cfg, ai_util, task="short_summary")
+        elif ai_util.local_summarization:
+            logger.debug("Using Hugging Face summarization for short summary")
             try:
-                summary = summarize_text_using_local_model(input_text=text, model=ai_util.local_summarization_model,
-                                                           max_length=200, min_length=30)
+                summary = summarize_text_using_local_model(input_text=text, model=ai_util.local_summarization_model, max_length=200, min_length=30)
             except Exception as e:
                 logger.error(f"Error during Hugging Face summarization: {e}")
                 return ""
-    else:
-        logger.debug("Failed to generate short summary: No available summarization method")
-        return ""
+        elif ai_util.local_capable:
+            logger.debug("Using local AI for short summary")
+            prompt = cfg["prompts"].get("short_summary", "")
+            summary = run_local_call(prompt, text, 200, cfg, ai_util.local_model, ai_util.local_tokenizer,
+                                     ai_util.local_model_device)
+        elif ai_util.openai_client is not None:
+            logger.debug("Using OpenAI for short summary")
+            summary = open_ai_call(
+                cfg["prompts"].get("short_summary", ""), text, 200, cfg, ai_util.openai_client, ai_util.openai_tokenizer, task="short_summary"
+            )
+            if summary == "":
+                logger.debug("OpenAI returned an empty summary, trying fallback")
+                try:
+                    summary = summarize_text_using_local_model(input_text=text, model=ai_util.local_summarization_model,
+                                                               max_length=200, min_length=30)
+                except Exception as e:
+                    logger.error(f"Error during Hugging Face summarization: {e}")
+                    return ""
+        else:
+            logger.debug("Failed to generate short summary: No available summarization method")
+            return ""
 
-    logger.info("Summary generated")
-    return summary
+        logger.info("Summary generated")
+        return summary
 
 
 def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str:
@@ -368,137 +410,153 @@ def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str
     Returns:
         str: A cleaned summary of the text.
     """
-    prompt = cfg["prompts"]["clean_summary"]
+    tracker = get_timing_tracker()
+    model_name = _get_model_name(cfg, "clean_summary")
+    
+    with tracker.time_task("clean_summary", model_name):
+        prompt = cfg["prompts"]["clean_summary"]
 
-    # If leader_name is provided, replace placeholder
-    if leader_name:
-        prompt = prompt.replace("<leader_name>", leader_name)
-    else:
-        # Replace with a generic focus
-        prompt = prompt.replace("<leader_name>", "women leaders generally")
+        # If leader_name is provided, replace placeholder
+        if leader_name:
+            prompt = prompt.replace("<leader_name>", leader_name)
+        else:
+            # Replace with a generic focus
+            prompt = prompt.replace("<leader_name>", "women leaders generally")
 
-    # Prioritize: Ollama > Local AI > OpenAI
-    if ai_util.ollama_enabled:
-        logger.debug("Using Ollama for clean summary")
-        cleaned_summary = ollama_call(prompt, text, 4000, cfg, ai_util, task="clean_summary")
-    elif ai_util.local_capable:
-        logger.debug("Using local AI for clean summary")
-        cleaned_summary = run_local_call(prompt, text, 500, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openai_client is not None:
-        logger.debug("Using OpenAI for clean summary")
-        cleaned_summary = open_ai_call(
-            prompt,
-            text,
-            4000,
-            cfg,
-            ai_util.openai_client,
-            ai_util.openai_tokenizer,
-            task="clean_summary",
-        )
-    else:
-        logger.debug("Failed clean summary: No LLM provider available")
-        return text
+        # Prioritize: Ollama > Local AI > OpenAI
+        if ai_util.ollama_enabled:
+            logger.debug("Using Ollama for clean summary")
+            cleaned_summary = ollama_call(prompt, text, 4000, cfg, ai_util, task="clean_summary")
+        elif ai_util.local_capable:
+            logger.debug("Using local AI for clean summary")
+            cleaned_summary = run_local_call(prompt, text, 500, cfg, ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+        elif ai_util.openai_client is not None:
+            logger.debug("Using OpenAI for clean summary")
+            cleaned_summary = open_ai_call(
+                prompt,
+                text,
+                4000,
+                cfg,
+                ai_util.openai_client,
+                ai_util.openai_tokenizer,
+                task="clean_summary",
+            )
+        else:
+            logger.debug("Failed clean summary: No LLM provider available")
+            return text
 
-    return cleaned_summary
+        return cleaned_summary
 
 
 def spin_genders(text: str, cfg: dict, ai_util) -> str:
     """
     Rewrite the text with genders spun, using Ollama, local AI, or OpenAI.
     """
-    logger.debug("Requesting spin_genders rewrite")
+    tracker = get_timing_tracker()
+    model_name = _get_model_name(cfg, "spin_genders")
+    
+    with tracker.time_task("spin_genders", model_name):
+        logger.debug("Requesting spin_genders rewrite")
 
-    # Prioritize: Ollama > Local AI > OpenAI
-    if ai_util.ollama_enabled:
-        logger.debug("Using Ollama for gender spinning")
-        prompt = cfg["prompts"]["spin_genders"]
-        spun_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="spin_genders")
-    elif ai_util.local_capable:
-        logger.debug("Using local AI for gender spinning")
-        prompt = cfg["prompts"]["spin_genders"]
-        spun_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openai_client is not None:
-        logger.debug("Using OpenAI for gender spinning")
-        spun_result = open_ai_call(
-            cfg["prompts"]["spin_genders"],
-            text,
-            4000,
-            cfg,
-            ai_util.openai_client,
-            ai_util.openai_tokenizer,
-            task="spin_genders",
-        )
-    else:
-        logger.debug("Failed spin_genders: No LLM provider available")
-        return text
+        # Prioritize: Ollama > Local AI > OpenAI
+        if ai_util.ollama_enabled:
+            logger.debug("Using Ollama for gender spinning")
+            prompt = cfg["prompts"]["spin_genders"]
+            spun_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="spin_genders")
+        elif ai_util.local_capable:
+            logger.debug("Using local AI for gender spinning")
+            prompt = cfg["prompts"]["spin_genders"]
+            spun_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+        elif ai_util.openai_client is not None:
+            logger.debug("Using OpenAI for gender spinning")
+            spun_result = open_ai_call(
+                cfg["prompts"]["spin_genders"],
+                text,
+                4000,
+                cfg,
+                ai_util.openai_client,
+                ai_util.openai_tokenizer,
+                task="spin_genders",
+            )
+        else:
+            logger.debug("Failed spin_genders: No LLM provider available")
+            return text
 
-    logger.info("Received spin_genders rewrite")
-    return spun_result
+        logger.info("Received spin_genders rewrite")
+        return spun_result
 
 
 def clean_article(text: str, cfg: dict, ai_util) -> str:
     """
     Clean an article by removing ads, subscription prompts, and other boilerplate, using Ollama, local AI, or OpenAI.
     """
-    logger.debug("Requesting clean_article")
+    tracker = get_timing_tracker()
+    model_name = _get_model_name(cfg, "clean_article")
+    
+    with tracker.time_task("clean_article", model_name):
+        logger.debug("Requesting clean_article")
 
-    # Prioritize: Ollama > Local AI > OpenAI
-    if ai_util.ollama_enabled:
-        logger.debug("Using Ollama for cleaning article")
-        prompt = cfg["prompts"]["clean_article"]
-        cleaned_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="clean_article")
-    elif ai_util.local_capable:
-        logger.debug("Using local AI for cleaning article")
-        prompt = cfg["prompts"]["clean_article"]
-        cleaned_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openai_client is not None:
-        logger.debug("Using OpenAI for cleaning article")
-        cleaned_result = open_ai_call(
-            cfg["prompts"]["clean_article"],
-            text,
-            4000,
-            cfg,
-            ai_util.openai_client,
-            ai_util.openai_tokenizer,
-            task="clean_article",
-        )
-    else:
-        logger.debug("Failed clean_article: No LLM provider available")
-        return text
+        # Prioritize: Ollama > Local AI > OpenAI
+        if ai_util.ollama_enabled:
+            logger.debug("Using Ollama for cleaning article")
+            prompt = cfg["prompts"]["clean_article"]
+            cleaned_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="clean_article")
+        elif ai_util.local_capable:
+            logger.debug("Using local AI for cleaning article")
+            prompt = cfg["prompts"]["clean_article"]
+            cleaned_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+        elif ai_util.openai_client is not None:
+            logger.debug("Using OpenAI for cleaning article")
+            cleaned_result = open_ai_call(
+                cfg["prompts"]["clean_article"],
+                text,
+                4000,
+                cfg,
+                ai_util.openai_client,
+                ai_util.openai_tokenizer,
+                task="clean_article",
+            )
+        else:
+            logger.debug("Failed clean_article: No LLM provider available")
+            return text
 
-    logger.info("Received clean_article")
-    return cleaned_result
+        logger.info("Received clean_article")
+        return cleaned_result
 
 
 def add_background_on_women(text: str, cfg: dict, ai_util) -> str:
     """
     Add background information about women mentioned in the text, using Ollama, local AI, or OpenAI.
     """
-    logger.debug("Requesting add_background_on_women enhancement")
+    tracker = get_timing_tracker()
+    model_name = _get_model_name(cfg, "add_background_on_women")
+    
+    with tracker.time_task("add_background_on_women", model_name):
+        logger.debug("Requesting add_background_on_women enhancement")
 
-    # Prioritize: Ollama > Local AI > OpenAI
-    if ai_util.ollama_enabled:
-        logger.debug("Using Ollama for adding background on women")
-        prompt = cfg["prompts"]["add_background_on_women"]
-        enhanced_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="add_background_on_women")
-    elif ai_util.local_capable:
-        logger.debug("Using local AI for adding background on women")
-        prompt = cfg["prompts"]["add_background_on_women"]
-        enhanced_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
-    elif ai_util.openai_client is not None:
-        logger.debug("Using OpenAI for adding background on women")
-        enhanced_result = open_ai_call(
-            cfg["prompts"]["add_background_on_women"],
-            text,
-            4000,
-            cfg,
-            ai_util.openai_client,
-            ai_util.openai_tokenizer,
-            task="add_background_on_women",
-        )
-    else:
-        logger.debug("Failed add_background_on_women: No LLM provider available")
-        return text
+        # Prioritize: Ollama > Local AI > OpenAI
+        if ai_util.ollama_enabled:
+            logger.debug("Using Ollama for adding background on women")
+            prompt = cfg["prompts"]["add_background_on_women"]
+            enhanced_result = ollama_call(prompt, text, 4000, cfg, ai_util, task="add_background_on_women")
+        elif ai_util.local_capable:
+            logger.debug("Using local AI for adding background on women")
+            prompt = cfg["prompts"]["add_background_on_women"]
+            enhanced_result = run_local_call(prompt, text, 500, cfg,  ai_util.local_model, ai_util.local_tokenizer, ai_util.local_model_device)
+        elif ai_util.openai_client is not None:
+            logger.debug("Using OpenAI for adding background on women")
+            enhanced_result = open_ai_call(
+                cfg["prompts"]["add_background_on_women"],
+                text,
+                4000,
+                cfg,
+                ai_util.openai_client,
+                ai_util.openai_tokenizer,
+                task="add_background_on_women",
+            )
+        else:
+            logger.debug("Failed add_background_on_women: No LLM provider available")
+            return text
 
-    logger.info("Received add_background_on_women enhancement")
-    return enhanced_result
+        logger.info("Received add_background_on_women enhancement")
+        return enhanced_result

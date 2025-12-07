@@ -31,6 +31,7 @@ from ai_queries import (
     clean_article,
 )
 from news_formatter import generate_text, generate_html
+from timing_tracker import get_timing_tracker
 
 # Approximate a character→token ratio if tiktoken not available:
 APPROX_CHARS_PER_TOKEN = 4
@@ -559,6 +560,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         )
 
         # ─── Process Each Article ────────────────
+        tracker = get_timing_tracker()
         for art, body, image_list in zip(raw_articles, bodies, images):
             # Process spaCy PERSON entities
             art["body"] = body
@@ -574,6 +576,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                     categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
                                                             stats,
                                                             summarize_selected)
+                    # Log timing for new articles only
+                    tracker.log_article_timing(art.get("title", "Unknown"), name)
                 else:
                     # Fetch status and content from cached data if article is not new
                     cached_art = cached_data_map.get(article_key)
@@ -589,6 +593,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                 categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
                                                         stats,
                                                         summarize_selected)
+                # Log timing for all articles when not using cache
+                tracker.log_article_timing(art.get("title", "Unknown"), name)
 
             hits.append(art)
 
@@ -602,6 +608,9 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
         # ─── Save Processed Articles to Cache ────────────────
         save_cache(cache_file, {"articles": hits})  # Save processed articles to cache
+        
+        # ─── Log Query Completion Timing ────────────────
+        tracker.log_query_complete(name)
 
     return results
 
@@ -947,25 +956,32 @@ def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text"
          use_cache: bool = False, new_today: bool = False, expire_days: int = None):
     setup_logging(log_level)
     cfg = load_config(config_path)
-    res = fetch_and_filter(cfg, use_cache, new_today, expire_days)  # Pass flags to fetch_and_filter
+    
+    try:
+        res = fetch_and_filter(cfg, use_cache, new_today, expire_days)  # Pass flags to fetch_and_filter
 
-    # Extract metadata (query strings) for HTML generation
-    metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
-    if fmt == "html":
-        out = generate_html(res, metadata)
-    else:  # Use plain text formatter for other formats
-        out = generate_text(res, metadata)
+        # Extract metadata (query strings) for HTML generation
+        metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
+        if fmt == "html":
+            out = generate_html(res, metadata)
+        else:  # Use plain text formatter for other formats
+            out = generate_text(res, metadata)
 
-    # Determine output file format
-    if output is None:
-        output = "news.html" if fmt == "html" else "news.txt"
+        # Determine output file format
+        if output is None:
+            output = "news.html" if fmt == "html" else "news.txt"
 
-    if output.lower() == "console":
-        print(out)
-    else:
-        with open(output, "w", encoding="utf-8") as f:
-            f.write(out)
-        logger.info(f"Saved results to {output}")
+        if output.lower() == "console":
+            print(out)
+        else:
+            with open(output, "w", encoding="utf-8") as f:
+                f.write(out)
+            logger.info(f"Saved results to {output}")
+    finally:
+        # Always finalize timing tracker to write final summary
+        tracker = get_timing_tracker()
+        tracker.finalize()
+        logger.info("Timing summary written to timing.log")
 
 
 if __name__ == "__main__":
