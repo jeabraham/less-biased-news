@@ -150,17 +150,25 @@ class TimingTracker:
                     f.write(f"accumulated amount for query \"{query_name}\":\n")
                     for task in sorted(self.query_timings[query_name].keys()):
                         duration = self.query_timings[query_name][task]
-                        count = self.query_counts[query_name].get(task, 1)
-                        avg_ms = (duration / count) * 1000
-                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                        count = self.query_counts[query_name].get(task, 0)
+                        if count > 0:
+                            avg_ms = (duration / count) * 1000
+                            f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                        else:
+                            # Should not happen but handle gracefully
+                            f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
                     
                     # Also log total timings so far
                     f.write(f"\naccumulated amount for all articles so far:\n")
                     for task in sorted(self.total_timings.keys()):
                         duration = self.total_timings[task]
-                        count = self.total_counts.get(task, 1)
-                        avg_ms = (duration / count) * 1000
-                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                        count = self.total_counts.get(task, 0)
+                        if count > 0:
+                            avg_ms = (duration / count) * 1000
+                            f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                        else:
+                            # Should not happen but handle gracefully
+                            f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
                     f.write(f"{'-'*80}\n\n")
             except Exception as e:
                 logger.error(f"Failed to log query completion: {e}")
@@ -181,9 +189,13 @@ class TimingTracker:
                 f.write(f"accumulated amount for all articles so far:\n")
                 for task in sorted(self.total_timings.keys()):
                     duration = self.total_timings[task]
-                    count = self.total_counts.get(task, 1)
-                    avg_ms = (duration / count) * 1000
-                    f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                    count = self.total_counts.get(task, 0)
+                    if count > 0:
+                        avg_ms = (duration / count) * 1000
+                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                    else:
+                        # Should not happen but handle gracefully
+                        f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
                 f.write(f"{'~'*80}\n\n")
         except Exception as e:
             logger.error(f"Failed to write periodic log: {e}")
@@ -198,9 +210,13 @@ class TimingTracker:
                     f.write(f"accumulated amount for all articles:\n")
                     for task in sorted(self.total_timings.keys()):
                         duration = self.total_timings[task]
-                        count = self.total_counts.get(task, 1)
-                        avg_ms = (duration / count) * 1000
-                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                        count = self.total_counts.get(task, 0)
+                        if count > 0:
+                            avg_ms = (duration / count) * 1000
+                            f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
+                        else:
+                            # Should not happen but handle gracefully
+                            f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
                     f.write(f"{'='*80}\n\n")
             except Exception as e:
                 logger.error(f"Failed to write final summary: {e}")
