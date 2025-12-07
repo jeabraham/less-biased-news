@@ -9,8 +9,10 @@ The timing tracking feature provides detailed performance metrics for `news_filt
 - **Per-article timing**: Logs timing for each processed article
 - **Task-level tracking**: Tracks time for each operation (image analysis, classification, summarization, etc.)
 - **Model identification**: Shows which AI model was used for each task
-- **Query accumulation**: Accumulates timing by query
-- **Total accumulation**: Tracks total timing across all articles
+- **Action counting**: Counts how many times each task was performed
+- **Average timing**: Calculates and displays average time per task in milliseconds
+- **Query accumulation**: Accumulates timing and counts by query
+- **Total accumulation**: Tracks total timing and counts across all articles
 - **Periodic updates**: Writes accumulated timing every 10 minutes
 - **Query completion**: Writes accumulated timing when each query completes
 
@@ -31,18 +33,18 @@ article: Trudeau announces new policy
 ```
 --------------------------------------------------------------------------------
 accumulated amount for query "Canada":
-  classify_leadership (ollama model qwen-2): 5.2s
-  clean_article (ollama model llama-3): 12.5s
-  clean_summary (ollama model gpt-4): 45.0s
-  image_analysis: 140.0s
-  spin_genders (ollama model gpt-4): 824.0s
+  classify_leadership (ollama model qwen-2): 5.2s (count: 15, avg: 347ms)
+  clean_article (ollama model llama-3): 12.5s (count: 15, avg: 833ms)
+  clean_summary (ollama model gpt-4): 45.0s (count: 8, avg: 5625ms)
+  image_analysis: 140.0s (count: 15, avg: 9333ms)
+  spin_genders (ollama model gpt-4): 824.0s (count: 7, avg: 117714ms)
 
 accumulated amount for all articles so far:
-  classify_leadership (ollama model qwen-2): 15.2s
-  clean_article (ollama model llama-3): 42.5s
-  clean_summary (ollama model gpt-4): 145.0s
-  image_analysis: 530.0s
-  spin_genders (ollama model gpt-4): 5230.0s
+  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
+  clean_summary (ollama model gpt-4): 145.0s (count: 25, avg: 5800ms)
+  image_analysis: 530.0s (count: 45, avg: 11778ms)
+  spin_genders (ollama model gpt-4): 5230.0s (count: 20, avg: 261500ms)
 --------------------------------------------------------------------------------
 ```
 
@@ -51,10 +53,10 @@ accumulated amount for all articles so far:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 PERIODIC UPDATE (2025-12-07 23:28:40)
 accumulated amount for all articles so far:
-  classify_leadership (ollama model qwen-2): 15.2s
-  clean_article (ollama model llama-3): 42.5s
-  image_analysis: 530.0s
-  spin_genders (ollama model gpt-4): 5230.0s
+  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
+  image_analysis: 530.0s (count: 45, avg: 11778ms)
+  spin_genders (ollama model gpt-4): 5230.0s (count: 20, avg: 261500ms)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ```
 
@@ -63,11 +65,11 @@ accumulated amount for all articles so far:
 ================================================================================
 FINAL SUMMARY (2025-12-07 23:28:42)
 accumulated amount for all articles:
-  classify_leadership (ollama model qwen-2): 15.2s
-  clean_article (ollama model llama-3): 42.5s
-  clean_summary (ollama model gpt-4): 145.0s
-  image_analysis: 530.0s
-  spin_genders (ollama model gpt-4): 5230.0s
+  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
+  clean_summary (ollama model gpt-4): 145.0s (count: 25, avg: 5800ms)
+  image_analysis: 530.0s (count: 45, avg: 11778ms)
+  spin_genders (ollama model gpt-4): 5230.0s (count: 20, avg: 261500ms)
 ================================================================================
 ```
 
@@ -221,18 +223,18 @@ article: Tech CEO Steps Down After Scandal
 
 --------------------------------------------------------------------------------
 accumulated amount for query "Breaking News":
-  classify_leadership (ollama model qwen-2): 5.2s
-  clean_article (ollama model llama-3): 12.5s
-  clean_summary (ollama model gpt-4): 145.0s
-  image_analysis: 340.0s
-  spin_genders (ollama model gpt-4): 824.0s
+  classify_leadership (ollama model qwen-2): 5.2s (count: 15, avg: 347ms)
+  clean_article (ollama model llama-3): 12.5s (count: 15, avg: 833ms)
+  clean_summary (ollama model gpt-4): 145.0s (count: 8, avg: 18125ms)
+  image_analysis: 340.0s (count: 15, avg: 22667ms)
+  spin_genders (ollama model gpt-4): 824.0s (count: 7, avg: 117714ms)
 
 accumulated amount for all articles so far:
-  classify_leadership (ollama model qwen-2): 15.2s
-  clean_article (ollama model llama-3): 42.5s
-  clean_summary (ollama model gpt-4): 345.0s
-  image_analysis: 1530.0s
-  spin_genders (ollama model gpt-4): 2230.0s
+  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
+  clean_summary (ollama model gpt-4): 345.0s (count: 25, avg: 13800ms)
+  image_analysis: 1530.0s (count: 45, avg: 34000ms)
+  spin_genders (ollama model gpt-4): 2230.0s (count: 20, avg: 111500ms)
 --------------------------------------------------------------------------------
 
 [... periodic updates ...]
@@ -240,27 +242,30 @@ accumulated amount for all articles so far:
 ================================================================================
 FINAL SUMMARY (2025-12-07 23:45:30)
 accumulated amount for all articles:
-  classify_leadership (ollama model qwen-2): 45.2s
-  clean_article (ollama model llama-3): 142.5s
-  clean_summary (ollama model gpt-4): 1245.0s
-  image_analysis: 5530.0s
-  spin_genders (ollama model gpt-4): 12230.0s
+  classify_leadership (ollama model qwen-2): 45.2s (count: 135, avg: 335ms)
+  clean_article (ollama model llama-3): 142.5s (count: 135, avg: 1056ms)
+  clean_summary (ollama model gpt-4): 1245.0s (count: 75, avg: 16600ms)
+  image_analysis: 5530.0s (count: 135, avg: 40963ms)
+  spin_genders (ollama model gpt-4): 12230.0s (count: 60, avg: 203833ms)
 ================================================================================
 ```
 
 This shows that over the entire run:
-- Image analysis took ~1.5 hours total
-- Gender spinning took ~3.4 hours total
-- Classification was very fast (~45 seconds total)
-- The bulk of the time was spent on AI-heavy tasks
+- Image analysis: 135 operations, ~41 seconds average per image
+- Gender spinning: 60 operations, ~3.4 minutes average per article
+- Classification: 135 operations, very fast at ~335ms average
+- Clean summary: 75 operations, ~17 seconds average
+- The bulk of the time was spent on AI-heavy tasks (gender spinning and image analysis)
 
 ## Benefits
 
-1. **Identify bottlenecks**: See which tasks are taking the most time
-2. **Optimize model selection**: Compare performance of different AI models
-3. **Plan resources**: Understand how long full runs will take
-4. **Debug issues**: Identify articles or queries that are unusually slow
+1. **Identify bottlenecks**: See which tasks are taking the most time on average
+2. **Optimize model selection**: Compare performance of different AI models using average times
+3. **Plan resources**: Understand how long full runs will take based on operation counts and averages
+4. **Debug issues**: Identify articles or queries that are unusually slow compared to average
 5. **Monitor progress**: Watch timing updates in real-time to gauge completion
+6. **Track utilization**: See how many times each task is being called to understand workflow patterns
+7. **Cost estimation**: Use operation counts to estimate API costs for paid services
 
 ## Future Enhancements
 

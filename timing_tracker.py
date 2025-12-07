@@ -38,6 +38,12 @@ class TimingTracker:
         # Accumulated timings for all articles
         self.total_timings: Dict[str, float] = {}
         
+        # Count of operations per query
+        self.query_counts: Dict[str, Dict[str, int]] = {}
+        
+        # Count of operations for all articles
+        self.total_counts: Dict[str, int] = {}
+        
         # Track last periodic log time
         self.last_periodic_log = time.time()
         self.periodic_interval = 600  # 10 minutes in seconds
@@ -78,7 +84,7 @@ class TimingTracker:
         finally:
             elapsed = time.time() - start_time
             with self.lock:
-                # Add to current article timings
+                # Add to current article timings and increment count
                 self.current_article_timings[task_key] = \
                     self.current_article_timings.get(task_key, 0) + elapsed
     
@@ -101,14 +107,22 @@ class TimingTracker:
                     for task, duration in sorted(self.current_article_timings.items()):
                         f.write(f"  {task}: {duration:.1f}s\n")
                 
-                # Accumulate to query timings
+                # Accumulate to query timings and counts
                 if query_name not in self.query_timings:
                     self.query_timings[query_name] = {}
+                if query_name not in self.query_counts:
+                    self.query_counts[query_name] = {}
                 
                 for task, duration in self.current_article_timings.items():
+                    # Accumulate timing
                     self.query_timings[query_name][task] = \
                         self.query_timings[query_name].get(task, 0) + duration
                     self.total_timings[task] = self.total_timings.get(task, 0) + duration
+                    
+                    # Increment counts
+                    self.query_counts[query_name][task] = \
+                        self.query_counts[query_name].get(task, 0) + 1
+                    self.total_counts[task] = self.total_counts.get(task, 0) + 1
                 
                 # Clear current article timings
                 self.current_article_timings.clear()
@@ -134,13 +148,19 @@ class TimingTracker:
                 with open(self.log_file, 'a', encoding='utf-8') as f:
                     f.write(f"\n{'-'*80}\n")
                     f.write(f"accumulated amount for query \"{query_name}\":\n")
-                    for task, duration in sorted(self.query_timings[query_name].items()):
-                        f.write(f"  {task}: {duration:.1f}s\n")
+                    for task in sorted(self.query_timings[query_name].keys()):
+                        duration = self.query_timings[query_name][task]
+                        count = self.query_counts[query_name].get(task, 1)
+                        avg_ms = (duration / count) * 1000
+                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
                     
                     # Also log total timings so far
                     f.write(f"\naccumulated amount for all articles so far:\n")
-                    for task, duration in sorted(self.total_timings.items()):
-                        f.write(f"  {task}: {duration:.1f}s\n")
+                    for task in sorted(self.total_timings.keys()):
+                        duration = self.total_timings[task]
+                        count = self.total_counts.get(task, 1)
+                        avg_ms = (duration / count) * 1000
+                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
                     f.write(f"{'-'*80}\n\n")
             except Exception as e:
                 logger.error(f"Failed to log query completion: {e}")
@@ -159,8 +179,11 @@ class TimingTracker:
                 f.write(f"\n{'~'*80}\n")
                 f.write(f"PERIODIC UPDATE ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
                 f.write(f"accumulated amount for all articles so far:\n")
-                for task, duration in sorted(self.total_timings.items()):
-                    f.write(f"  {task}: {duration:.1f}s\n")
+                for task in sorted(self.total_timings.keys()):
+                    duration = self.total_timings[task]
+                    count = self.total_counts.get(task, 1)
+                    avg_ms = (duration / count) * 1000
+                    f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
                 f.write(f"{'~'*80}\n\n")
         except Exception as e:
             logger.error(f"Failed to write periodic log: {e}")
@@ -173,8 +196,11 @@ class TimingTracker:
                     f.write(f"\n{'='*80}\n")
                     f.write(f"FINAL SUMMARY ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
                     f.write(f"accumulated amount for all articles:\n")
-                    for task, duration in sorted(self.total_timings.items()):
-                        f.write(f"  {task}: {duration:.1f}s\n")
+                    for task in sorted(self.total_timings.keys()):
+                        duration = self.total_timings[task]
+                        count = self.total_counts.get(task, 1)
+                        avg_ms = (duration / count) * 1000
+                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
                     f.write(f"{'='*80}\n\n")
             except Exception as e:
                 logger.error(f"Failed to write final summary: {e}")

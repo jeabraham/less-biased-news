@@ -122,6 +122,9 @@ def main():
             ('accumulated amount for query "Tech"', "✓ Tech query logged"),
             ("accumulated amount for all articles so far:", "✓ Total accumulation logged"),
             ("FINAL SUMMARY", "✓ Final summary logged"),
+            ("count:", "✓ Action counts logged"),
+            ("avg:", "✓ Average times logged"),
+            ("ms)", "✓ Millisecond format used"),
         ]
         
         all_passed = True
