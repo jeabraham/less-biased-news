@@ -49,11 +49,11 @@ class AIUtils:
                 self.ollama_enabled = False
             else:
                 logger.info("Ollama is enabled and will be used as the LLM provider")
-                # Set host for ollama via environment variable expected by the client
+                # Create Ollama client with explicit host parameter
                 base_url = self.ollama_cfg.get("base_url", "http://localhost:11434")
-                os.environ["OLLAMA_HOST"] = base_url
-                # Use the module as the client
-                self.ollama_client = ollama
+                logger.info(f"Initializing Ollama client with host: {base_url}")
+                # Create a new Client instance with the custom host
+                self.ollama_client = ollama.Client(host=base_url)
         
         # Initialize OpenAI only if Ollama is not enabled
         if not self.ollama_enabled:
@@ -270,9 +270,7 @@ class AIUtils:
 
             logger.info(f"Calling Ollama API with model: {model_name}")
 
-            # base_url is now provided via OLLAMA_HOST env var in __init__, no set_host call here
-
-            # Call Ollama API
+            # Call Ollama API (client was initialized with custom host in __init__)
             response = self.ollama_client.generate(
                 model=model_name,
                 prompt=prompt,
