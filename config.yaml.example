@@ -24,7 +24,7 @@ openai:
 
 ollama:
   enabled: True  # Set to True to use Ollama instead of OpenAI
-  base_url: "http://localhost:11434"  # Default Ollama API endpoint
+  base_url: "http://brooks.office.hbaspecto.com:11434"  # Default Ollama API endpoint
   model: "llama3.1:8b"  # Default model if task-specific model not specified
   # Task-specific models
   clean_article_model: "milkey/GLM-4-9B-0414:Q4_K_M"
@@ -131,29 +131,37 @@ prompts:
     Article:
 
   spin_genders: >-
-    Rewrite the following news article with a *mild feminist reframing*, while keeping all facts, events, names, quotes, and meaning intact.
 
-    Rules:
+    Rewrite the following news article with a *mild feminist reframing*, while keeping every fact exactly the same.
+
+    Hard Rules (No Exceptions):
+
+    - Do NOT change anyone’s gender, sex, or identity.
+    - Do NOT change family relationships (e.g., father, mother, son, daughter).
+    - Do NOT change any outcomes (e.g., who died, who was injured, who survived).
+    - Do NOT change or invent any names, except when replacing a non-essential *male* name with a neutral role.
+    - Do NOT modify or replace any female names under any circumstances.
+    - Do NOT invent new people or change who is involved in events.
+    - Do NOT alter any quotes spoken by anyone.
 
     1. Emphasize Women
        - Keep full names of all women or girls exactly as written.
-       - Preserve all quotes spoken by women exactly as written.
-       - Lightly strengthen their presence, focus, or perceived agency (without inventing new actions, claims, or events).
+       - Preserve women’s quotes exactly.
+       - Lightly strengthen their presence in narration without adding or changing events.
 
     2. De-Emphasize Men
-       - If a male figure is *not essential* to the meaning, replace his entire name with a neutral role (e.g., “a spokesperson,” “a city official,” “a representative”).
-       - If a male public figure’s name *must* remain for factual accuracy, leave the full name unchanged. Do NOT convert it to initials here. (A later process will handle this.)
-       - Do NOT change, rewrite, or remove any masculine pronouns. (This will be handled later by another process.)
-       - Do NOT modify any quotes spoken by men.
+       - If a male figure is *not essential* to the factual meaning, you may replace his entire name with a neutral description (e.g., “a spokesperson,” “a city official,” “a representative”).
+       - If a male name is essential for factual accuracy, leave it unchanged.
+       - Do NOT alter masculine pronouns; they will be handled later by another process.
 
-    3. Constraints
-       - Do NOT add background information about anyone.
-       - Do NOT remove or alter factual content.
-       - Keep the length, tone, and structure similar to the original.
-       - Do NOT add commentary, disclaimers, or explanations.
+    3. Keep All Facts Intact
+       - Do NOT change events, causes, results, injuries, deaths, or timelines.
+       - Do NOT change scientific details, numbers, or locations.
+       - Maintain the same structure and similar length.
 
     4. Output
-       - Produce only the rewritten article text.
+       - Return ONLY the rewritten article.
+       - Do not add explanations or commentary.
 
     Now rewrite the article:
 
@@ -286,6 +294,7 @@ queries:
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
     summarize_selected: true
+    fallback_image_female: short_summary     # if a woman’s face is prominent
     male_initials: true
     remove_male_pronouns: true
 #    countries: ca doesn't work
@@ -308,8 +317,8 @@ queries:
     q: '"Canada" and ("woman" or "women" or "girl")'
     page_size: 20
     classification: true
-    fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
-    fallback_image_female: short_summary     # if a woman’s face is prominent
+    fallback: spin_genders  # Options: show_full, short_summary, spin_genders, exclude
+    fallback_image_female: spin_genders     # if a woman’s face is prominent
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
@@ -335,5 +344,5 @@ queries:
     fallback_women: spin_genders
     fallback_image_female: show_full     # if a woman’s face is prominent
     summarize_selected: true
-    male_initials: true
-    remove_male_pronouns: true
+    male_initials: false
+    remove_male_pronouns: false
