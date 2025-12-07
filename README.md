@@ -2,9 +2,20 @@
 
 ## Purpose
 
-A Python tool for fetching and filtering news articles through name- and image-based gender classification and OpenAI summarization.
+A Python tool for fetching and filtering news articles through name- and image-based gender classification and AI-powered analysis.
 
 This project addresses the tendency for news sources to focus on male leaders and men in control—reflecting both media biases and the broader patriarchal structures that persist globally. By applying gender-aware filtering and summarization, it highlights and balances representation of women in news coverage.
+
+## 🚀 Recent Enhancements
+
+- **✅ Full Ollama Support** - Run completely locally without OpenAI API keys
+- **✅ Task-Specific Models** - Configure different models for classification, summaries, and rewriting
+- **✅ Automatic Fallbacks** - Graceful degradation between models if one fails
+- **✅ Ubuntu Makefile** - One-command installation and management on Ubuntu
+- **✅ Comprehensive Testing** - New test suite for validating LLM prompts
+- **✅ Six LLM Operations** - Classification, short/clean summaries, spinning, cleaning, and context addition
+
+See [OLLAMA_SETUP.md](OLLAMA_SETUP.md) for detailed Ollama configuration guide.
 
 ## Overview
 
@@ -31,9 +42,49 @@ This module processes news articles in several stages:
 ## Prerequisites
 
 - **Python 3.12** (3.9 is too old, 3.13 doesn't yet have the binary wheels for some of the packages on MacOS.  Yay Python!, you always make things hard!)
-- Instructions are based on a Unix environment, such as **macOS**.
+- Instructions are based on a Unix environment, such as **macOS** or **Ubuntu Linux**.
+- For Ubuntu, see the [Quick Ubuntu Installation](#quick-ubuntu-installation-with-makefile) section below.
 
-## Installation
+## Quick Ubuntu Installation with Makefile
+
+For Ubuntu users, we provide a comprehensive Makefile that automates the entire installation process:
+
+```bash
+# Clone the repository
+git clone https://github.com/jabraham/less-biased-news.git
+cd less-biased-news
+
+# Check system requirements
+make check-system
+
+# Complete installation (system packages, Python deps, and Ollama)
+make install
+
+# Start Ollama and pull the model
+make start-ollama
+make pull-ollama-model
+
+# Run tests
+make test
+
+# Run the application
+make run
+```
+
+**Available Makefile targets:**
+- `make help` - Show all available commands
+- `make install` - Complete installation
+- `make check-system` - Verify system requirements
+- `make install-ollama` - Install Ollama for local LLM
+- `make check-ollama` - Check Ollama status
+- `make test` - Run test suite
+- `make run` - Run the news filter
+- `make clean` - Clean temporary files
+- `make uninstall` - Remove virtual environment
+
+For detailed information, run `make help`.
+
+## Manual Installation
 
 1. Clone the repository:
    ```bash
@@ -101,7 +152,20 @@ bin/run_news_filter.sh
 
 ## Using Ollama (Recommended for Local LLM)
 
-This project supports [Ollama](https://ollama.ai/) as a local LLM provider, which doesn't require an OpenAI API key. Ollama is recommended for local inference as it's easier to set up than the transformers-based models.
+This project has **full support for [Ollama](https://ollama.ai/)** as a local LLM provider, with NO OpenAI API key required. Ollama is the **recommended approach** for several reasons:
+
+- ✅ **No API costs** - Run unlimited queries locally
+- ✅ **Complete privacy** - Your data never leaves your machine  
+- ✅ **Easy setup** - Simpler than transformers-based models
+- ✅ **Task-specific models** - Configure different models for different operations
+- ✅ **Fallback support** - Automatic fallback between models
+- ✅ **Full feature parity** - All four LLM operations supported:
+  - Article classification (leadership detection)
+  - Short summaries
+  - Clean/detailed summaries  
+  - Gender-focused article rewriting ("spinning")
+
+**Ubuntu users:** Simply run `make install-ollama` and `make pull-ollama-model`.
 
 ### 1. Install Ollama
 
@@ -141,14 +205,19 @@ In your `config.yaml`, enable Ollama and disable OpenAI:
 ollama:
   enabled: True
   base_url: "http://localhost:11434"
-  model: "llama3-lexi-uncensored"
-  # Task-specific models (optional, falls back to 'model' if not specified)
-  classify_leadership_model: "llama3-lexi-uncensored"
-  short_summary_model: "llama3-lexi-uncensored"
-  clean_summary_model: "llama3-lexi-uncensored"
-  spin_genders_model: "llama3-lexi-uncensored"
+  model: "llama3.1:8b"  # Default model
+  # Task-specific models (NEW FEATURE: Use different models per task!)
+  classification_model: "llama3.1:8b"        # Fast model for classification
+  short_summary_model: "llama3.1:8b"         # Fast model for short summaries
+  clean_summary_model: "llama3.1:8b"         # Detailed model for full summaries
+  spin_genders_model: "llama3.1:8b"          # High-quality model for rewriting
+  clean_article_model: "llama3.1:8b"         # Model for article cleaning
+  add_background_on_women_model: "llama3.1:8b"  # Model for adding context
+  # Fallback models (NEW FEATURE: Automatic fallback on failures)
+  spin_genders_fallback: "dolphin3:latest"
+  summary_fallback: "qwen2.5:7b"
   temperature: 0.1
-  max_tokens: 4096
+  max_tokens: 8192
 
 openai:
   api_key: ""  # Leave empty when using Ollama
