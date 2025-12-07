@@ -63,29 +63,24 @@ def truncate_for_openai(
 
 
 
-def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, task: str = None) -> str:
+def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, task: str = None):
     """
     Call the Ollama API for generating a response based on the given prompt and text.
 
-    Args:
-        prompt: The prompt to send to the model.
-        text: The text to process.
-        return_tokens: Maximum number of tokens the model should generate.
-        cfg: Configuration dictionary.
-        ai_util: AIUtils instance for performing the actual Ollama call.
-        task: Task name (classify_leadership, short_summary, clean_summary, spin_genders, etc.)
+    Returns:
+        dict with:
+        {
+            "text": str,              # model response (or empty string)
+            "refused": bool,          # True if model refused the request
+            "raw": str                # unmodified raw text from the model
+        }
+    }
     """
 
     try:
         # ----------------------------------------------------------------------
         # SAFE INPUT LIMITING
         # ----------------------------------------------------------------------
-        # True context limits vary by model (llama3.1:8b ~8192 tokens).
-        # To avoid overflow, we allow up to ~32k characters of input.
-        # This never truncates normal articles.
-        # ----------------------------------------------------------------------
-
-        # Conservative safe upper bound (approx. model max context).
         MAX_INPUT_CHARS = cfg.get("ollama", {}).get("max_input_chars", 32000)
 
         if len(text) > MAX_INPUT_CHARS:
@@ -107,21 +102,56 @@ def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, 
         temp = cfg.get("ollama", {}).get("temperature", 0.1)
 
         # ----------------------------------------------------------------------
-        # API CALL (no internal truncation)
+        # API CALL
         # ----------------------------------------------------------------------
-        result = ai_util._call_ollama_api(
+        raw_result = ai_util._call_ollama_api(
             prompt_plus_text,
             max_tokens=return_tokens,
             temperature=temp,
             task=task,
         )
 
-        # Log only beginning for safety
-        logger.debug(f"Ollama result preview: {result[:200]}...")
-        return result
+        logger.debug(f"Ollama result preview: {raw_result[:200]}...")
+
+        # ----------------------------------------------------------------------
+        # REFUSAL DETECTION (FIRST ~300 CHARACTERS)
+        # ----------------------------------------------------------------------
+        refusal_snippets = cfg.get("ollama", {}).get("refusal_markers", [
+            "i can't",
+            "i cannot",
+            "i’m not able",
+            "i am not able",
+            "cannot assist",
+            "can't assist",
+            "can't help with",
+            "cannot help with",
+            "not allowed",
+            "violates",
+            "as an ai",
+            "i'm unable",
+            "i cannot create",
+            "i cannot provide",
+        ])
+
+        # Normalize for checking
+        head = raw_result[:300].lower()
+
+        refused = any(marker in head for marker in refusal_snippets)
+
+        should_return = {
+            "text": "" if refused else raw_result,
+            "refused": refused,
+            "raw": raw_result,
+        }
+        return should_return["text"]
 
     except Exception as e:
         logger.error(f"Ollama API call failed: {e}")
+        # return {
+        #     "text": "",
+        #     "refused": True,
+        #     "raw": "",
+        # }
         return ""
 
 
