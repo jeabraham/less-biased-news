@@ -118,7 +118,7 @@ Pull the default Ollama model (llama3.1:8b).
 **Customize the model:**
 ```bash
 # Pull a different model
-OLLAMA_MODEL=mistral make pull-ollama-model
+OLLAMA_MODEL=mistral:7b make pull-ollama-model
 ```
 
 **Usage:**

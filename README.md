@@ -216,8 +216,8 @@ ollama:
   clean_article_model: "mistral:7b"          # Fast model for article cleaning
   add_background_on_women_model: "llama3.1:8b"  # Knowledgeable model for context
   # Fallback models (NEW FEATURE: Automatic fallback on failures)
-  spin_genders_fallback: "llama3.1:8b"       # Fallback for gender spinning
-  summary_fallback: "mistral:7b"             # Fallback for summaries
+  spin_genders_fallback: "mistral:7b"        # Reliable fallback for gender spinning
+  summary_fallback: "llama3.1:8b"            # Reliable fallback for summaries
   temperature: 0.1
   max_tokens: 8192
 

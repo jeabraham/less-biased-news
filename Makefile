@@ -208,7 +208,7 @@ stop-ollama:
 	@echo "$(BLUE)Stopping Ollama service...$(NC)"
 	@if [ -f ollama.pid ]; then \
 		pid=$$(cat ollama.pid) ; \
-		if [ -n "$$pid" ] && [ "$$pid" -eq "$$pid" ] 2>/dev/null; then \
+		if [ -n "$$pid" ] && [ "$$pid" -gt 0 ] 2>/dev/null; then \
 			if kill -0 $$pid 2>/dev/null; then \
 				kill $$pid 2>/dev/null && echo "$(GREEN)✓ Ollama service stopped (PID: $$pid)$(NC)" ; \
 			else \
@@ -294,16 +294,17 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type f -name "*.pyo" -delete 2>/dev/null || true
-	find . -type f -name "*.log" -delete 2>/dev/null || true
+	rm -f ollama.log 2>/dev/null || true
 	rm -rf .pytest_cache 2>/dev/null || true
 	rm -f ollama.pid 2>/dev/null || true
 	@echo "$(GREEN)✓ Cleaned temporary files$(NC)"
 
-# Deep clean including cache
+# Deep clean including cache and logs
 clean-all: clean
-	@echo "$(BLUE)Cleaning cache and output...$(NC)"
+	@echo "$(BLUE)Cleaning cache, output, and logs...$(NC)"
 	rm -rf cache/*
 	rm -rf $(OUTPUT_DIR)/*
+	find . -type f -name "*.log" -delete 2>/dev/null || true
 	@echo "$(GREEN)✓ Deep clean completed$(NC)"
 
 # Uninstall (remove virtual environment)
