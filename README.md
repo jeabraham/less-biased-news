@@ -146,6 +146,20 @@ Run manually:
 python news_filter.py   --config config.yaml   --format html   --output news_$(date +%Y-%m-%d).html   --log INFO
 ```
 
+### New Features: Improved Cache Management
+
+The cache system now tracks all processed articles with timestamps and supports expiration:
+
+```bash
+# Only process articles not seen before
+python news_filter.py --new-today
+
+# Remove cache entries older than 30 days before processing
+python news_filter.py --new-today --expire-older-than 30
+```
+
+This prevents old recycled articles from appearing as "new" and allows flexible cache retention policies. See [CACHE_IMPROVEMENTS.md](CACHE_IMPROVEMENTS.md) for details.
+
 Or use the helper script:
 
 ```bash
