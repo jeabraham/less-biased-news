@@ -303,15 +303,15 @@ def process_article_in_text(article, for_email, article_number, lines, section: 
         if article_number > 0:
             lines.append(f"{article_number}. {title}")
         else:
-            lines.append(f"{section or ""}: {title}")
+            lines.append(f"{section or ''}: {title}")
         # Add status information
         status = article.get("status", "")
         if article.get("leader_name"):
             status += f" ({article.get('leader_name')})"
             # Add image status if available
-        if article.get("most_relevant_image"):
-            img_status = article.get("most_relevant_status", "unknown")
-            status += f" | {img_status}"
+            if article.get("most_relevant_image"):
+                img_status = article.get("most_relevant_status", "unknown")
+                status += f" | {img_status}"
         if status:
             lines.append(f"   Status: {status}")
 
