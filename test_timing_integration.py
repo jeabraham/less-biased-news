@@ -115,9 +115,9 @@ def main():
         checks = [
             ("article: Trudeau announces new policy", "✓ Article titles logged"),
             ("image_analysis:", "✓ Image analysis timings logged"),
-            ("spin_genders (ollama model gpt-4):", "✓ Spin genders with model logged"),
-            ("classify_leadership (ollama model qwen-2):", "✓ Classification with model logged"),
-            ("clean_summary (ollama model gpt-4):", "✓ Clean summary with model logged"),
+            ("spin_genders (model gpt-4):", "✓ Spin genders with model logged"),
+            ("classify_leadership (model qwen-2):", "✓ Classification with model logged"),
+            ("clean_summary (model gpt-4):", "✓ Clean summary with model logged"),
             ('accumulated amount for query "Canada"', "✓ Query accumulation logged"),
             ('accumulated amount for query "Tech"', "✓ Tech query logged"),
             ("accumulated amount for all articles so far:", "✓ Total accumulation logged"),

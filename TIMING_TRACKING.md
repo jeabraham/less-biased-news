@@ -23,28 +23,28 @@ The timing information is written to `timing.log` in the following format:
 ### Per-Article Timing
 ```
 article: Trudeau announces new policy
-  classify_leadership (ollama model qwen-2): 0.2s
-  clean_article (ollama model llama-3): 0.5s
+  classify_leadership (model qwen-2): 0.2s
+  clean_article (model llama-3): 0.5s
   image_analysis: 25.0s
-  spin_genders (ollama model gpt-4): 18.0s
+  spin_genders (model gpt-4): 18.0s
 ```
 
 ### Query Completion Summary
 ```
 --------------------------------------------------------------------------------
 accumulated amount for query "Canada":
-  classify_leadership (ollama model qwen-2): 5.2s (count: 15, avg: 347ms)
-  clean_article (ollama model llama-3): 12.5s (count: 15, avg: 833ms)
-  clean_summary (ollama model gpt-4): 45.0s (count: 8, avg: 5625ms)
+  classify_leadership (model qwen-2): 5.2s (count: 15, avg: 347ms)
+  clean_article (model llama-3): 12.5s (count: 15, avg: 833ms)
+  clean_summary (model gpt-4): 45.0s (count: 8, avg: 5625ms)
   image_analysis: 140.0s (count: 15, avg: 9333ms)
-  spin_genders (ollama model gpt-4): 824.0s (count: 7, avg: 117714ms)
+  spin_genders (model gpt-4): 824.0s (count: 7, avg: 117714ms)
 
 accumulated amount for all articles so far:
-  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
-  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
-  clean_summary (ollama model gpt-4): 145.0s (count: 25, avg: 5800ms)
+  classify_leadership (model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (model llama-3): 42.5s (count: 45, avg: 944ms)
+  clean_summary (model gpt-4): 145.0s (count: 25, avg: 5800ms)
   image_analysis: 530.0s (count: 45, avg: 11778ms)
-  spin_genders (ollama model gpt-4): 5230.0s (count: 20, avg: 261500ms)
+  spin_genders (model gpt-4): 5230.0s (count: 20, avg: 261500ms)
 --------------------------------------------------------------------------------
 ```
 
@@ -53,10 +53,10 @@ accumulated amount for all articles so far:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 PERIODIC UPDATE (2025-12-07 23:28:40)
 accumulated amount for all articles so far:
-  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
-  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
+  classify_leadership (model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (model llama-3): 42.5s (count: 45, avg: 944ms)
   image_analysis: 530.0s (count: 45, avg: 11778ms)
-  spin_genders (ollama model gpt-4): 5230.0s (count: 20, avg: 261500ms)
+  spin_genders (model gpt-4): 5230.0s (count: 20, avg: 261500ms)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ```
 
@@ -65,11 +65,11 @@ accumulated amount for all articles so far:
 ================================================================================
 FINAL SUMMARY (2025-12-07 23:28:42)
 accumulated amount for all articles:
-  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
-  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
-  clean_summary (ollama model gpt-4): 145.0s (count: 25, avg: 5800ms)
+  classify_leadership (model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (model llama-3): 42.5s (count: 45, avg: 944ms)
+  clean_summary (model gpt-4): 145.0s (count: 25, avg: 5800ms)
   image_analysis: 530.0s (count: 45, avg: 11778ms)
-  spin_genders (ollama model gpt-4): 5230.0s (count: 20, avg: 261500ms)
+  spin_genders (model gpt-4): 5230.0s (count: 20, avg: 261500ms)
 ================================================================================
 ```
 
@@ -209,32 +209,32 @@ Timing Log Session Started: 2025-12-07 12:00:00
 
 article: Breaking: New Climate Policy Announced
   image_analysis: 23.5s
-  classify_leadership (ollama model qwen-2): 0.3s
-  clean_article (ollama model llama-3): 1.2s
-  spin_genders (ollama model gpt-4): 15.8s
+  classify_leadership (model qwen-2): 0.3s
+  clean_article (model llama-3): 1.2s
+  spin_genders (model gpt-4): 15.8s
 
 article: Tech CEO Steps Down After Scandal
   image_analysis: 28.1s
-  classify_leadership (ollama model qwen-2): 0.2s
-  clean_article (ollama model llama-3): 0.9s
-  clean_summary (ollama model gpt-4): 22.3s
+  classify_leadership (model qwen-2): 0.2s
+  clean_article (model llama-3): 0.9s
+  clean_summary (model gpt-4): 22.3s
 
 [... more articles ...]
 
 --------------------------------------------------------------------------------
 accumulated amount for query "Breaking News":
-  classify_leadership (ollama model qwen-2): 5.2s (count: 15, avg: 347ms)
-  clean_article (ollama model llama-3): 12.5s (count: 15, avg: 833ms)
-  clean_summary (ollama model gpt-4): 145.0s (count: 8, avg: 18125ms)
+  classify_leadership (model qwen-2): 5.2s (count: 15, avg: 347ms)
+  clean_article (model llama-3): 12.5s (count: 15, avg: 833ms)
+  clean_summary (model gpt-4): 145.0s (count: 8, avg: 18125ms)
   image_analysis: 340.0s (count: 15, avg: 22667ms)
-  spin_genders (ollama model gpt-4): 824.0s (count: 7, avg: 117714ms)
+  spin_genders (model gpt-4): 824.0s (count: 7, avg: 117714ms)
 
 accumulated amount for all articles so far:
-  classify_leadership (ollama model qwen-2): 15.2s (count: 45, avg: 338ms)
-  clean_article (ollama model llama-3): 42.5s (count: 45, avg: 944ms)
-  clean_summary (ollama model gpt-4): 345.0s (count: 25, avg: 13800ms)
+  classify_leadership (model qwen-2): 15.2s (count: 45, avg: 338ms)
+  clean_article (model llama-3): 42.5s (count: 45, avg: 944ms)
+  clean_summary (model gpt-4): 345.0s (count: 25, avg: 13800ms)
   image_analysis: 1530.0s (count: 45, avg: 34000ms)
-  spin_genders (ollama model gpt-4): 2230.0s (count: 20, avg: 111500ms)
+  spin_genders (model gpt-4): 2230.0s (count: 20, avg: 111500ms)
 --------------------------------------------------------------------------------
 
 [... periodic updates ...]
@@ -242,11 +242,11 @@ accumulated amount for all articles so far:
 ================================================================================
 FINAL SUMMARY (2025-12-07 23:45:30)
 accumulated amount for all articles:
-  classify_leadership (ollama model qwen-2): 45.2s (count: 135, avg: 335ms)
-  clean_article (ollama model llama-3): 142.5s (count: 135, avg: 1056ms)
-  clean_summary (ollama model gpt-4): 1245.0s (count: 75, avg: 16600ms)
+  classify_leadership (model qwen-2): 45.2s (count: 135, avg: 335ms)
+  clean_article (model llama-3): 142.5s (count: 135, avg: 1056ms)
+  clean_summary (model gpt-4): 1245.0s (count: 75, avg: 16600ms)
   image_analysis: 5530.0s (count: 135, avg: 40963ms)
-  spin_genders (ollama model gpt-4): 12230.0s (count: 60, avg: 203833ms)
+  spin_genders (model gpt-4): 12230.0s (count: 60, avg: 203833ms)
 ================================================================================
 ```
 

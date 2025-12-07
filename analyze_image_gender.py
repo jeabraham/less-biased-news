@@ -94,7 +94,6 @@ def analyze_image_gender(image_url: str):
     """
     tracker = get_timing_tracker()
     with tracker.time_task("image_analysis"):
-        start = time.time()
         logger.info(f"[ImageGender] Starting analysis for {image_url}")
 
         try:
@@ -109,24 +108,21 @@ def analyze_image_gender(image_url: str):
 
             img_np = np.array(img_pil)
             H, W, _ = img_np.shape  # Extract image dimensions
-            logger.debug(f"[ImageGender] Downloaded image in {time.time() - start:.2f}s (W={W}, H={H})")
+            logger.debug(f"[ImageGender] Downloaded image (W={W}, H={H})")
         except Exception as e:
             logger.warning(f"[ImageGender] Download/Open failed: {e}")
             return None, None
 
         try:
             # 2) Face detection with MTCNN
-            t0 = time.time()
             boxes, _ = mtcnn.detect(img_pil)
         except Exception as e:
-            logger.warning(f"[ImageGender] Face detection error (took {time.time() - t0:.2f}s): {e}")
+            logger.warning(f"[ImageGender] Face detection error: {e}")
             return None, (W, H)
-        finally:
-            logger.debug(f"[ImageGender] detect() call finished in {time.time() - t0:.2f}s")
 
         # Handle zero faces
         if boxes is None or len(boxes) == 0:
-            logger.info(f"[ImageGender] No faces detected (in {time.time() - t0:.2f}s)")
+            logger.info(f"[ImageGender] No faces detected")
             return None, (W, H)
 
         logger.debug(f"[ImageGender] MTCNN found {len(boxes)} face(s)")
@@ -182,5 +178,5 @@ def analyze_image_gender(image_url: str):
             logger.debug(f"[ImageGender] Face {i}: {face_rec}")
             faces.append(face_rec)
 
-        logger.info(f"[ImageGender] Completed in {time.time() - start:.2f}s: {len(faces)} valid face(s)")
+        logger.info(f"[ImageGender] Analysis complete: {len(faces)} valid face(s)")
         return faces, (W, H)

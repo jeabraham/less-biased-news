@@ -76,7 +76,7 @@ class TimingTracker:
                 pass
         """
         # Build full task key including model if provided
-        task_key = f"{task_name} (ollama model {model_name})" if model_name else task_name
+        task_key = f"{task_name} (model {model_name})" if model_name else task_name
         
         start_time = time.time()
         try:
@@ -151,27 +151,36 @@ class TimingTracker:
                     for task in sorted(self.query_timings[query_name].keys()):
                         duration = self.query_timings[query_name][task]
                         count = self.query_counts[query_name].get(task, 0)
-                        if count > 0:
-                            avg_ms = (duration / count) * 1000
-                            f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
-                        else:
-                            # Should not happen but handle gracefully
-                            f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
+                        f.write(self._format_timing_line(task, duration, count))
                     
                     # Also log total timings so far
                     f.write(f"\naccumulated amount for all articles so far:\n")
                     for task in sorted(self.total_timings.keys()):
                         duration = self.total_timings[task]
                         count = self.total_counts.get(task, 0)
-                        if count > 0:
-                            avg_ms = (duration / count) * 1000
-                            f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
-                        else:
-                            # Should not happen but handle gracefully
-                            f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
+                        f.write(self._format_timing_line(task, duration, count))
                     f.write(f"{'-'*80}\n\n")
             except Exception as e:
                 logger.error(f"Failed to log query completion: {e}")
+    
+    def _format_timing_line(self, task: str, duration: float, count: int) -> str:
+        """
+        Format a timing line with duration, count, and average.
+        
+        Args:
+            task: Task name
+            duration: Total duration in seconds
+            count: Number of times the task was performed
+            
+        Returns:
+            Formatted string with timing information
+        """
+        if count > 0:
+            avg_ms = (duration / count) * 1000
+            return f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n"
+        else:
+            # Should not happen but handle gracefully
+            return f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n"
     
     def _check_periodic_log(self):
         """Check if we should write a periodic accumulated timing log."""
@@ -190,12 +199,7 @@ class TimingTracker:
                 for task in sorted(self.total_timings.keys()):
                     duration = self.total_timings[task]
                     count = self.total_counts.get(task, 0)
-                    if count > 0:
-                        avg_ms = (duration / count) * 1000
-                        f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
-                    else:
-                        # Should not happen but handle gracefully
-                        f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
+                    f.write(self._format_timing_line(task, duration, count))
                 f.write(f"{'~'*80}\n\n")
         except Exception as e:
             logger.error(f"Failed to write periodic log: {e}")
@@ -211,12 +215,7 @@ class TimingTracker:
                     for task in sorted(self.total_timings.keys()):
                         duration = self.total_timings[task]
                         count = self.total_counts.get(task, 0)
-                        if count > 0:
-                            avg_ms = (duration / count) * 1000
-                            f.write(f"  {task}: {duration:.1f}s (count: {count}, avg: {avg_ms:.0f}ms)\n")
-                        else:
-                            # Should not happen but handle gracefully
-                            f.write(f"  {task}: {duration:.1f}s (count: 0, avg: N/A)\n")
+                        f.write(self._format_timing_line(task, duration, count))
                     f.write(f"{'='*80}\n\n")
             except Exception as e:
                 logger.error(f"Failed to write final summary: {e}")

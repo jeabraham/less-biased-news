@@ -37,7 +37,7 @@ def test_basic_timing():
             content = f.read()
             assert "Test Article 1" in content, "Article title not in log"
             assert "task1:" in content, "Task1 not in log"
-            assert "task2 (ollama model model-a):" in content, "Task2 with model not in log"
+            assert "task2 (model model-a):" in content, "Task2 with model not in log"
         
         print("✓ Basic timing test passed")
     finally:
