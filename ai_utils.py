@@ -49,7 +49,10 @@ class AIUtils:
                 self.ollama_enabled = False
             else:
                 logger.info("Ollama is enabled and will be used as the LLM provider")
-                # Ollama client is used directly via the ollama module
+                # Set host for ollama via environment variable expected by the client
+                base_url = self.ollama_cfg.get("base_url", "http://localhost:11434")
+                os.environ["OLLAMA_HOST"] = base_url
+                # Use the module as the client
                 self.ollama_client = ollama
         
         # Initialize OpenAI only if Ollama is not enabled
@@ -241,32 +244,34 @@ class AIUtils:
     def _call_ollama_api(self, prompt: str, max_tokens: int = 200, temperature: float = None, task: str = None) -> str:
         """
         Perform API-based inference via Ollama.
-        
+    
         Args:
             prompt: The prompt to send to the model
             max_tokens: Maximum number of tokens to generate
             temperature: Sampling temperature (None uses config default)
             task: Task name (classify_leadership, short_summary, clean_summary, spin_genders)
-            
+        
         Returns:
             The generated text
         """
         try:
             if not self.ollama_enabled or not self.ollama_client:
                 raise RuntimeError("Ollama is not enabled or not available")
-            
+
             # Select model based on task
             if task:
                 model_key = f"{task}_model"
                 model_name = self.ollama_cfg.get(model_key, self.ollama_cfg.get("model", "llama3-lexi-uncensored"))
             else:
                 model_name = self.ollama_cfg.get("model", "llama3-lexi-uncensored")
-            
+
             if temperature is None:
                 temperature = self.ollama_cfg.get("temperature", 0.1)
-            
+
             logger.info(f"Calling Ollama API with model: {model_name}")
-            
+
+            # base_url is now provided via OLLAMA_HOST env var in __init__, no set_host call here
+
             # Call Ollama API
             response = self.ollama_client.generate(
                 model=model_name,
@@ -276,11 +281,13 @@ class AIUtils:
                     "num_predict": max_tokens,
                 }
             )
-            
+
             result = response.get("response", "").strip()
+            if not result:
+                logger.warning("Ollama returned an empty response")
             logger.debug(f"Ollama result length: {len(result)} chars")
             return result
-            
+        
         except Exception as e:
             logger.error(f"Ollama API call failed: {e}")
             return ""
