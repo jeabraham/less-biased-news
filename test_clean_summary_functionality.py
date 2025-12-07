@@ -22,7 +22,7 @@ class TestCleanSummaryFunctionality(unittest.TestCase):
 
     def setUp(self):
         """Load config for testing."""
-        with open("config.yaml.example", "r") as f:
+        with open("config.yaml.example", "r", encoding="utf-8") as f:
             self.cfg = yaml.safe_load(f)
 
     def test_prompt_exists_in_config(self):
@@ -38,7 +38,7 @@ class TestCleanSummaryFunctionality(unittest.TestCase):
 
     def test_clean_summary_imports_in_test_llm_prompts(self):
         """Test that test_llm_prompts.py imports clean_summary."""
-        with open("test_llm_prompts.py", "r") as f:
+        with open("test_llm_prompts.py", "r", encoding="utf-8") as f:
             content = f.read()
         
         # Check for import statement
@@ -54,7 +54,7 @@ class TestCleanSummaryFunctionality(unittest.TestCase):
 
     def test_clean_summary_imports_in_news_filter(self):
         """Test that news_filter.py imports and uses clean_summary."""
-        with open("news_filter.py", "r") as f:
+        with open("news_filter.py", "r", encoding="utf-8") as f:
             content = f.read()
         
         # Check for import statement
@@ -117,7 +117,7 @@ class TestCleanSummaryFunctionality(unittest.TestCase):
 
     def test_test_llm_prompts_structure(self):
         """Test that test_llm_prompts.py has the expected structure."""
-        with open("test_llm_prompts.py", "r") as f:
+        with open("test_llm_prompts.py", "r", encoding="utf-8") as f:
             content = f.read()
         
         # Check for LLMPromptTester class
@@ -136,7 +136,7 @@ class TestCleanSummaryFunctionality(unittest.TestCase):
 
     def test_categorize_article_structure(self):
         """Test that categorize_article_and_generate_content uses clean_summary correctly."""
-        with open("news_filter.py", "r") as f:
+        with open("news_filter.py", "r", encoding="utf-8") as f:
             content = f.read()
         
         # Check that clean_summary is called in the female_leader branch
