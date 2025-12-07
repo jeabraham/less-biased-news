@@ -181,3 +181,7 @@ cython_debug/
 config.yaml
 /config*.yaml
 /models/
+
+# Makefile generated files
+ollama.pid
+ollama.log

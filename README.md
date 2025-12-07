@@ -82,7 +82,7 @@ make run
 - `make clean` - Clean temporary files
 - `make uninstall` - Remove virtual environment
 
-For detailed information, run `make help`.
+For detailed information, run `make help` or see [MAKEFILE.md](MAKEFILE.md).
 
 ## Manual Installation
 
