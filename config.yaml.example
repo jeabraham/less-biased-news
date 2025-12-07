@@ -73,30 +73,24 @@ prompts:
   clean_article: >-
     Below is a news article copied from an online news source.
 
-    Your task:
-    Return the article **exactly as written**, except:
+    Return the article *exactly as written* except for the following removals:
+    - ads
+    - subscription prompts
+    - paywall text
+    - navigation lists
+    - “related stories” or “story continues below”
+    - promotional blocks
+    - social media prompts
+    - newsletter signups
+    - cookie notices
+    - photo captions not part of the narrative
+    - any boilerplate not part of the article's main text
 
-    - Remove ads
-    - Remove subscription prompts
-    - Remove paywall text
-    - Remove navigation lists
-    - Remove “related stories” or “story continues below”
-    - Remove promotional blocks
-    - Remove social media prompts
-    - Remove newsletter signup boxes
-    - Remove cookie notices
-    - Remove photo captions if they are not part of the story
-    - Remove any other boilerplate or distractions that are not part of the article’s narrative
-
-    Important rules:
-    - Do NOT rephrase or rewrite any remaining text.
-    - Do NOT summarize or shorten the meaningful content.
-    - Do NOT add new sentences or commentary.
-    - Do NOT remove any quotes, names, or factual content from the main article.
-    - Preserve paragraph breaks where possible.
-    - If uncertain whether a section is article content or boilerplate, KEEP IT.
-
-    Now return the cleaned article only:
+    Rules:
+    - Do NOT rephrase, summarize, explain, or add commentary.
+    - Do NOT add any introduction, explanation, or lead-in.
+    - Output *only* the cleaned article text.
+    - Begin your output with the first word of the cleaned article.
 
     ARTICLE:
 
@@ -131,63 +125,64 @@ prompts:
     Article:
 
   spin_genders: >-
-    Rewrite the following news article with a *mild feminist reframing*, while keeping all facts, events, names, quotes, and meaning intact.
 
-    Rules:
+    Rewrite the following news article with a *mild feminist reframing*, while keeping every fact exactly the same.
+
+    Hard Rules (No Exceptions):
+
+    - Do NOT change anyone’s gender, sex, or identity.
+    - Do NOT change family relationships (e.g., father, mother, son, daughter).
+    - Do NOT change any outcomes (e.g., who died, who was injured, who survived).
+    - Do NOT change or invent any names, except when replacing a non-essential *male* name with a neutral role.
+    - Do NOT modify or replace any female names under any circumstances.
+    - Do NOT invent new people or change who is involved in events.
+    - Do NOT alter any quotes spoken by anyone.
 
     1. Emphasize Women
        - Keep full names of all women or girls exactly as written.
-       - Preserve all quotes spoken by women exactly as written.
-       - Lightly strengthen their presence, focus, or perceived agency (without inventing new actions, claims, or events).
+       - Preserve women’s quotes exactly.
+       - Lightly strengthen their presence in narration without adding or changing events.
 
     2. De-Emphasize Men
-       - If a male figure is *not essential* to the meaning, replace his entire name with a neutral role (e.g., “a spokesperson,” “a city official,” “a representative”).
-       - If a male public figure’s name *must* remain for factual accuracy, leave the full name unchanged. Do NOT convert it to initials here. (A later process will handle this.)
-       - Do NOT change, rewrite, or remove any masculine pronouns. (This will be handled later by another process.)
-       - Do NOT modify any quotes spoken by men.
+       - If a male figure is *not essential* to the factual meaning, you may replace his entire name with a neutral description (e.g., “a spokesperson,” “a city official,” “a representative”).
+       - If a male name is essential for factual accuracy, leave it unchanged.
+       - Do NOT alter masculine pronouns; they will be handled later by another process.
 
-    3. Constraints
-       - Do NOT add background information about anyone.
-       - Do NOT remove or alter factual content.
-       - Keep the length, tone, and structure similar to the original.
-       - Do NOT add commentary, disclaimers, or explanations.
+    3. Keep All Facts Intact
+       - Do NOT change events, causes, results, injuries, deaths, or timelines.
+       - Do NOT change scientific details, numbers, or locations.
+       - Maintain the same structure and similar length.
 
     4. Output
-       - Produce only the rewritten article text.
+       - Return ONLY the rewritten article.
+       - Do not add explanations or commentary.
 
     Now rewrite the article:
 
     Original article:
 
   add_background_on_women: >-
+    Insert one brief, accurate, widely known background sentence immediately after the first mention of each woman in the article, but only if she is a public figure.
 
-    Your task is to insert a brief, factual background sentence after the first mention of each woman in the article, but only if she is a public figure.
+    Public figures include:
+    - elected officials
+    - political candidates
+    - public servants
+    - journalists
+    - activists
+    - celebrities
+    - senior academics
+    - widely recognized professionals
 
-    Follow these rules precisely:
+    Rules:
+    - Add background ONLY for women.
+    - Do NOT add or restore information about men.
+    - Do NOT change wording, facts, quotes, or structure.
+    - Do NOT add any explanation of what you are doing.
+    - Output only the modified article.
+    - Begin your output with the first word of the revised article.
 
-    1. Identify Women
-       - Identify all named women or girls mentioned in the article.
-       - For each one, decide whether she is a public figure.
-       - Public figures include: elected officials, political candidates, public servants, journalists, activists, celebrities, senior academics, or widely known professionals.
-
-    2. Insert Background (Women Only)
-       - For each woman who is a public figure, insert exactly ONE sentence of widely known, factual background.
-       - Insert the sentence immediately after the woman’s first appearance.
-       - The sentence must be factual, concise, and reflect information that is broadly known or easily verifiable.
-
-    3. Do NOT Modify Content
-       - Do NOT change any wording in the original article.
-       - Do NOT remove or rewrite any part of the article.
-       - Do NOT add background information about men.
-       - Do NOT reorder or merge paragraphs.
-       - Do NOT add commentary, explanations, or analysis.
-
-    4. Output Formatting
-       - Return the full article with the inserted background sentences in place.
-       - Do not add headers, labels, or notes.
-       - Do not preface with explanations.
-
-    Article:
+    ARTICLE:
 
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden

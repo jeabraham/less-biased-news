@@ -416,36 +416,56 @@ def replace_male_first_names_with_initials(text, gender_map):
     name_pattern = r'\b(?:' + '|'.join(map(re.escape, male_names)) + r')\b'
     return re.sub(name_pattern, replace_name, text)
 
+import re
+
 def replace_male_pronouns_with_neutral(text):
     """
-    Replace male pronouns in the given text with gender-neutral pronouns.
-
-    Args:
-        text (str): The input text where pronouns will be replaced.
-
-    Returns:
-        str: The text with male pronouns replaced by gender-neutral pronouns.
+    Replace masculine pronouns with gender-neutral ones,
+    preserving capitalization automatically and distinguishing
+    'his' determiner vs. 'his' possessive pronoun.
     """
-    import re
 
     if not isinstance(text, str):
         raise ValueError("The input argument 'text' must be a string.")
 
-    # Map of male pronouns to gender-neutral alternatives
-    pronoun_map = {
-        r'\bhe\b': 'they',
-        r'\bHe\b': 'They',
-        r'\bhim\b': 'them',
-        r'\bHim\b': 'Them',
-        r'\bhis\b': 'their',
-        r'\bHis\b': 'Their',
-        r'\bhimself\b': 'themselves',
-        r'\bHimself\b': 'Themselves'
-    }
+    # Order matters: standalone HIS must come before determiner his
+    replacements = [
+        # himself
+        (r"\bhimself\b", "themself"),
 
-    # Replace male pronouns with gender-neutral ones
-    for male_pronoun, neutral_pronoun in pronoun_map.items():
-        text = re.sub(male_pronoun, neutral_pronoun, text)
+        # standalone 'his' → theirs (possessive pronoun)
+        # lookahead ensures end of string or non-word character
+        (r"\bhis\b(?=[^\w]|$)", "theirs"),
+
+        # 'his' determiner → their
+        (r"\bhis\b", "their"),
+
+        # him → them
+        (r"\bhim\b", "them"),
+
+        # he → they
+        (r"\bhe\b", "they"),
+    ]
+
+    def match_case(repl, original):
+        """Return repl but matching the capitalization pattern of original."""
+        if original.isupper():
+            return repl.upper()
+        if original[0].isupper():
+            return repl.capitalize()
+        return repl
+
+    def replacer(match, repl):
+        word = match.group(0)
+        return match_case(repl, word)
+
+    for pattern, repl in replacements:
+        text = re.sub(
+            pattern,
+            lambda m, r=repl: replacer(m, r),
+            text,
+            flags=re.IGNORECASE
+        )
 
     return text
 
