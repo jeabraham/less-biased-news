@@ -320,7 +320,7 @@ sudo make install-system-deps
 **Solutions:**
 1. Use a smaller model:
    ```bash
-   OLLAMA_MODEL=llama2:7b make pull-ollama-model
+   OLLAMA_MODEL=mistral:7b make pull-ollama-model
    ```
 2. Be patient - models are 4-8GB
 3. Check internet connection speed

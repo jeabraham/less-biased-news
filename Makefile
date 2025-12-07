@@ -191,13 +191,14 @@ start-ollama:
 		echo "$(YELLOW)Ollama is already running$(NC)" ; \
 	else \
 		nohup ollama serve > ollama.log 2>&1 & \
-		echo $$! > ollama.pid ; \
+		echo $$! > ollama.pid || { echo "$(RED)✗ Failed to create PID file$(NC)" ; exit 1 ; } ; \
 		sleep 2 ; \
 		if curl -s http://localhost:11434 >/dev/null 2>&1; then \
-			echo "$(GREEN)✓ Ollama service started$(NC)" ; \
+			echo "$(GREEN)✓ Ollama service started (PID: $$(cat ollama.pid))$(NC)" ; \
 		else \
 			echo "$(RED)✗ Failed to start Ollama$(NC)" ; \
 			cat ollama.log ; \
+			rm -f ollama.pid ; \
 			exit 1 ; \
 		fi \
 	fi
@@ -206,9 +207,17 @@ start-ollama:
 stop-ollama:
 	@echo "$(BLUE)Stopping Ollama service...$(NC)"
 	@if [ -f ollama.pid ]; then \
-		kill $$(cat ollama.pid) 2>/dev/null || true ; \
+		pid=$$(cat ollama.pid) ; \
+		if [ -n "$$pid" ] && [ "$$pid" -eq "$$pid" ] 2>/dev/null; then \
+			if kill -0 $$pid 2>/dev/null; then \
+				kill $$pid 2>/dev/null && echo "$(GREEN)✓ Ollama service stopped (PID: $$pid)$(NC)" ; \
+			else \
+				echo "$(YELLOW)Process $$pid not running$(NC)" ; \
+			fi \
+		else \
+			echo "$(RED)✗ Invalid PID in ollama.pid$(NC)" ; \
+		fi ; \
 		rm -f ollama.pid ; \
-		echo "$(GREEN)✓ Ollama service stopped$(NC)" ; \
 	else \
 		echo "$(YELLOW)No Ollama PID file found$(NC)" ; \
 	fi
@@ -221,11 +230,16 @@ test-ollama:
 		exit 1 ; \
 	fi
 	@echo "Testing with simple prompt..." ; \
-	curl -s http://localhost:11434/api/generate -d '{ \
+	response=$$(curl -s http://localhost:11434/api/generate -d '{ \
 		"model": "$(OLLAMA_MODEL)", \
 		"prompt": "Say hello in one word", \
 		"stream": false \
-	}' | $(PYTHON) -c "import sys, json; data=json.load(sys.stdin); print('Response:', data.get('response', 'No response'))" ; \
+	}') ; \
+	if command -v jq >/dev/null 2>&1; then \
+		echo "Response: $$(echo "$$response" | jq -r '.response // "No response"')" ; \
+	else \
+		echo "Response: $$(echo "$$response" | $(PYTHON) -c "import sys, json; data=json.load(sys.stdin); print(data.get('response', 'No response'))")" ; \
+	fi ; \
 	echo "$(GREEN)✓ Ollama is working$(NC)"
 
 # Setup configuration file

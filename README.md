@@ -15,7 +15,9 @@ This project addresses the tendency for news sources to focus on male leaders an
 - **✅ Comprehensive Testing** - New test suite for validating LLM prompts
 - **✅ Six LLM Operations** - Classification, short/clean summaries, spinning, cleaning, and context addition
 
-See [OLLAMA_SETUP.md](OLLAMA_SETUP.md) for detailed Ollama configuration guide.
+**Documentation:**
+- See [OLLAMA_SETUP.md](OLLAMA_SETUP.md) for detailed Ollama installation, configuration, troubleshooting, and model selection
+- See [MAKEFILE.md](MAKEFILE.md) for Ubuntu Makefile usage, targets, and advanced configuration
 
 ## Overview
 
@@ -207,15 +209,15 @@ ollama:
   base_url: "http://localhost:11434"
   model: "llama3.1:8b"  # Default model
   # Task-specific models (NEW FEATURE: Use different models per task!)
-  classification_model: "llama3.1:8b"        # Fast model for classification
-  short_summary_model: "llama3.1:8b"         # Fast model for short summaries
-  clean_summary_model: "llama3.1:8b"         # Detailed model for full summaries
-  spin_genders_model: "llama3.1:8b"          # High-quality model for rewriting
-  clean_article_model: "llama3.1:8b"         # Model for article cleaning
-  add_background_on_women_model: "llama3.1:8b"  # Model for adding context
+  classification_model: "llama3.1:8b"        # Fast, lightweight model for classification
+  short_summary_model: "qwen2.5:7b"          # Efficient model for short summaries
+  clean_summary_model: "llama3.1:8b"         # Larger model for detailed summaries
+  spin_genders_model: "dolphin3:latest"      # Uncensored model for rewriting
+  clean_article_model: "mistral:7b"          # Fast model for article cleaning
+  add_background_on_women_model: "llama3.1:8b"  # Knowledgeable model for context
   # Fallback models (NEW FEATURE: Automatic fallback on failures)
-  spin_genders_fallback: "dolphin3:latest"
-  summary_fallback: "qwen2.5:7b"
+  spin_genders_fallback: "llama3.1:8b"       # Fallback for gender spinning
+  summary_fallback: "mistral:7b"             # Fallback for summaries
   temperature: 0.1
   max_tokens: 8192
 
