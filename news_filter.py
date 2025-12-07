@@ -257,22 +257,31 @@ def fetch_mediastack(cfg: dict, qcfg: dict, use_cache: bool = False, cache_dir: 
 
         return []
 
-def get_cache_file_paths(query_name: str) -> tuple:
+def get_cache_file_path(query_name: str) -> str:
     """
-    Retrieves the paths for current (most recent) and yesterday's cache files
-    for a given query name.
+    Retrieves the path for the cache file for a given query name.
+    Now uses a single growing cache file instead of separate current/yesterday files.
 
-    :param query_name: Name of the query to retrieve paths for
-    :return: A tuple with paths (most_recent_cache_path, yesterday_cache_path)
+    :param query_name: Name of the query to retrieve path for
+    :return: Path to the cache file
     """
     base_dir = "cache"  # Base directory for cached data
-    most_recent_cache = os.path.join(base_dir, f"{query_name}_current.json")
-    yesterday_cache = os.path.join(base_dir, f"{query_name}_yesterday.json")
-    return most_recent_cache, yesterday_cache
+    cache_file = os.path.join(base_dir, f"{query_name}_cache.json")
+    return cache_file
 
 def load_cache(file_path: str) -> dict:
     """
     Loads the cache from the specified file. Returns an empty dictionary if the file doesn't exist.
+    
+    The cache structure is:
+    {
+        "articles": {
+            "<article_key>": {
+                "first_seen": "2025-12-07T12:34:56",
+                "article_data": {...}
+            }
+        }
+    }
 
     :param file_path: Path to the cache file
     :return: Dictionary with the cache contents
@@ -280,19 +289,99 @@ def load_cache(file_path: str) -> dict:
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as file:
             return json.load(file)
-    return {}
+    return {"articles": {}}
+
+def get_article_key(article: dict) -> str:
+    """
+    Generate a unique key for an article based on URL and title.
+    
+    :param article: Article dictionary
+    :return: Unique key string
+    """
+    url = article.get("url", "")
+    title = article.get("title", "")
+    # Use both URL and title for better uniqueness
+    return f"{url}||{title}"
+
+def expire_cache(file_path: str, expire_days: int):
+    """
+    Remove cache entries older than the specified number of days.
+    
+    :param file_path: Path to the cache file
+    :param expire_days: Number of days after which to expire entries
+    """
+    from datetime import datetime
+    
+    if not os.path.exists(file_path):
+        logger.debug(f"Cache file {file_path} does not exist, nothing to expire")
+        return
+    
+    cache = load_cache(file_path)
+    
+    # Calculate cutoff date
+    cutoff = datetime.now() - timedelta(days=expire_days)
+    
+    # Filter out expired entries
+    original_count = len(cache["articles"])
+    expired_keys = []
+    
+    for key, entry in cache["articles"].items():
+        first_seen_str = entry.get("first_seen", "")
+        if first_seen_str:
+            try:
+                first_seen = datetime.fromisoformat(first_seen_str)
+                if first_seen < cutoff:
+                    expired_keys.append(key)
+            except ValueError:
+                logger.warning(f"Invalid timestamp format for cache entry: {first_seen_str}")
+    
+    # Remove expired entries
+    for key in expired_keys:
+        del cache["articles"][key]
+    
+    if expired_keys:
+        logger.info(f"Expired {len(expired_keys)} cache entries older than {expire_days} days")
+        # Save updated cache
+        with open(file_path, "w", encoding="utf-8") as file:
+            json.dump(cache, file, indent=4)
+    else:
+        logger.debug(f"No cache entries to expire (checked {original_count} entries)")
 
 def save_cache(file_path: str, data: dict):
     """
-    Saves the cache data to a file. Adds the current date to the cache.
+    Saves the cache data to a file. Merges new articles with existing cache.
+    Each article is stored with a timestamp of when it was first processed.
 
     :param file_path: Path to the cache file
-    :param data: Data to save (will include articles and current date)
+    :param data: Data to save - should have structure {"articles": [...]}
     """
     os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Ensure the directory exists
-    save_data = {"date": date.today().isoformat(), "articles": data.get("articles", [])}
+    
+    # Load existing cache
+    existing_cache = load_cache(file_path)
+    
+    # Get current timestamp
+    from datetime import datetime
+    current_time = datetime.now().isoformat()
+    
+    # Merge new articles with existing ones
+    new_articles = data.get("articles", [])
+    for article in new_articles:
+        article_key = get_article_key(article)
+        
+        # Only add if not already in cache (preserves first_seen timestamp)
+        if article_key not in existing_cache["articles"]:
+            existing_cache["articles"][article_key] = {
+                "first_seen": current_time,
+                "article_data": article
+            }
+        else:
+            # Update article data but keep original first_seen timestamp
+            existing_cache["articles"][article_key]["article_data"] = article
+    
+    # Save merged cache
     with open(file_path, "w", encoding="utf-8") as file:
-        json.dump(save_data, file, indent=4)
+        json.dump(existing_cache, file, indent=4)
 
 def replace_male_first_names_with_initials(text, gender_map):
     """
@@ -395,7 +484,7 @@ def fetch_articles(qcfg: dict, cfg: dict, use_cache: bool = False) -> list:
     return raw_articles
 
 
-def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False) -> dict:
+def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False, expire_days: int = None) -> dict:
     logger.info("Initializing NewsAPI client")
     newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
     logger.info("Loading spaCy model")
@@ -412,42 +501,27 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         logger.info(f"Processing query '{name}'")
 
         # ─── Load and Manage Cache for `new_today` Logic ────────────────
-        most_recent_cache, yesterday_cache = get_cache_file_paths(name)  # Retrieve cache paths
-        cached_items=[]
+        cache_file = get_cache_file_path(name)  # Get single cache file path
+        
+        # Expire old cache entries if requested
+        if expire_days is not None:
+            expire_cache(cache_file, expire_days)
+        
+        cached_keys = set()
+        cached_data_map = {}
         if new_today:
-            logger.info("Loading the most recent cache...")
-            current_cache = load_cache(most_recent_cache)
-
-            # Check if the cache is from today or a previous day
-            is_new_day = current_cache.get("date") != date.today().isoformat()
-            logger.debug("Cache date: %s, Today's date: %s, Is new day: %s",
-                         current_cache.get("date"), date.today().isoformat(), is_new_day)
-
-            if is_new_day:
-                logger.info(f"New day detected. Updating yesterday's cache for '{name}'.")
-                try:
-                    save_cache(yesterday_cache, current_cache)  # Copy current data to yesterday's cache
-                    logger.debug("Yesterday's cache updated successfully.")
-                except Exception as e:
-                    logger.error("Failed to update yesterday's cache: %s", e)
-                    raise
-
-                yesterday_data = current_cache
-            else:
-                logger.info("Today's data is already up-to-date. Loading yesterday's cache.")
-                try:
-                    yesterday_data = load_cache(yesterday_cache)
-                    logger.debug("Yesterday's cache loaded successfully.")
-                except Exception as e:
-                    logger.error("Failed to load yesterday's cache: %s", e)
-                    raise
-
-            cached_items = yesterday_data.get("articles", []) if yesterday_data else []
-            logger.debug("Number of articles in yesterday's cache: %d", len(cached_items))
+            logger.info("Loading cache for new_today detection...")
+            cache = load_cache(cache_file)
+            
+            # Build a set of cached article keys for quick lookup
+            for article_key, entry in cache.get("articles", {}).items():
+                cached_keys.add(article_key)
+                # Store the cached article data for reuse
+                cached_data_map[article_key] = entry["article_data"]
+            
+            logger.debug(f"Number of articles in cache: {len(cached_keys)}")
         else:
             logger.info("new_today is False. Skipping cache operations.")
-
-        cached_titles = {cached_art.get("title", "") for cached_art in (cached_items or [])}
 
         # ─── Fetch Raw Articles From the Right Source ────────────────
         raw_articles = fetch_articles(qcfg, cfg, use_cache=use_cache)
@@ -471,9 +545,13 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         for art, body, image_list in zip(raw_articles, bodies, images):
             # Process spaCy PERSON entities
             art["body"] = body
-            # Tag new articles based on yesterday's cache, if enabled
+            
+            # Check if article is in cache
+            article_key = get_article_key(art)
+            
+            # Tag new articles based on cache, if enabled
             if new_today:
-                is_new = art["title"] not in cached_titles
+                is_new = article_key not in cached_keys
                 art["new_today"] = is_new
                 if is_new:
                     categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
@@ -481,15 +559,14 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                                                             summarize_selected)
                 else:
                     # Fetch status and content from cached data if article is not new
-                    for cached_art in cached_items:
-                        if cached_art.get("title") == art["title"]:
-                            art["status"] = cached_art.get("status", qcfg["fallback"])
-                            art["content"] = cached_art.get("content", art.get("description", "[No content available]"))
-                            art["image_urls"] = cached_art.get("image_urls", [])
-                            art["most_relevant_status"] = cached_art.get("most_relevant_status", "no_face")
-                            art["most_relevant_image"] = cached_art.get("most_relevant_image", None)
-                            art["image_analysis"] = cached_art.get("image_analysis", {})
-                            break
+                    cached_art = cached_data_map.get(article_key)
+                    if cached_art:
+                        art["status"] = cached_art.get("status", qcfg["fallback"])
+                        art["content"] = cached_art.get("content", art.get("description", "[No content available]"))
+                        art["image_urls"] = cached_art.get("image_urls", [])
+                        art["most_relevant_status"] = cached_art.get("most_relevant_status", "no_face")
+                        art["most_relevant_image"] = cached_art.get("most_relevant_image", None)
+                        art["image_analysis"] = cached_art.get("image_analysis", {})
                 logger.debug(f"{'New Title ->' if is_new else 'NOT New Title ->'} {art['title']}")
             else:
                 categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
@@ -506,8 +583,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
         results[name] = hits
 
-        # ─── Save Processed Articles to Current Cache ────────────────
-        save_cache(most_recent_cache, {"articles": hits})  # Save processed articles to `_current` cache
+        # ─── Save Processed Articles to Cache ────────────────
+        save_cache(cache_file, {"articles": hits})  # Save processed articles to cache
 
     return results
 
@@ -850,10 +927,10 @@ def gather_bodies_images_and_persons(
 # ─── Main Entrypoint ───────────────────────────────────────────────────
 
 def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text", log_level: str = "INFO",
-         use_cache: bool = False, new_today: bool = False):
+         use_cache: bool = False, new_today: bool = False, expire_days: int = None):
     setup_logging(log_level)
     cfg = load_config(config_path)
-    res = fetch_and_filter(cfg, use_cache, new_today)  # Pass the new_today flag to fetch_and_filter
+    res = fetch_and_filter(cfg, use_cache, new_today, expire_days)  # Pass flags to fetch_and_filter
 
     # Extract metadata (query strings) for HTML generation
     metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
@@ -888,7 +965,13 @@ if __name__ == "__main__":
     p.add_argument(
         "--new-today", "-N",
         action="store_true",
-        help="If set, tag new articles compared to the previous day's cache"
+        help="If set, only process articles not seen in the cache (compares to all previously cached articles)"
+    )
+    p.add_argument(
+        "--expire-older-than", "-E",
+        type=int,
+        metavar="DAYS",
+        help="Expire cache entries older than the specified number of days"
     )
     a = p.parse_args()
     main(
@@ -897,5 +980,6 @@ if __name__ == "__main__":
         fmt=a.format,
         log_level=a.log,
         use_cache=a.use_cache,
-        new_today=a.new_today
+        new_today=a.new_today,
+        expire_days=a.expire_older_than
     )
