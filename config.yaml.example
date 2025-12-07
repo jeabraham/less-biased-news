@@ -27,12 +27,18 @@ ollama:
   base_url: "http://localhost:11434"  # Default Ollama API endpoint
   model: "llama3.1:8b"  # Default model if task-specific model not specified
   # Task-specific models
-  add_background_on_women_model: "llama3.1:8b"
-  classify_leadership_model: "llama3.1:8b"
-  short_summary_model: "llama3.1:8b"      # (swap away from glm4)
-  clean_article_model: "glm4"
-  clean_summary_model: "glm4"
-  spin_genders_model: "qwen2.5:7b"       # (replace dolphin3)
+  clean_article_model: "milkey/GLM-4-9B-0414:Q4_K_M"
+  short_summary_model: "milkey/GLM-4-9B-0414:Q4_K_M"
+  clean_summary_model: "milkey/GLM-4-9B-0414:Q4_K_M"
+  add_background_on_women_model: "milkey/GLM-4-9B-0414:Q4_K_M"
+
+  classification_model: "llama3.1:8b"
+
+  spin_genders_model: "interstellarninja/hermes-2-pro-llama-3-8b:latest"
+
+  # fallback models
+  spin_genders_fallback: "dolphin3:latest"
+  summary_fallback: "qwen2.5:7b"
   temperature: 0.1
   max_tokens: 8192  # Maximum tokens for completion
 
@@ -125,23 +131,29 @@ prompts:
     Article:
 
   spin_genders: >-
-    Rewrite the following news article with a *mild feminist reframing*, while keeping all facts and meaning intact.
+    Rewrite the following news article with a *mild feminist reframing*, while keeping all facts, events, names, quotes, and meaning intact.
 
     Rules:
 
     1. Emphasize Women
-       - Keep full names of all women or girls.
-       - Preserve all quotes by women.
-       - Lightly strengthen their agency or presence (but do not invent facts).
+       - Keep full names of all women or girls exactly as written.
+       - Preserve all quotes spoken by women exactly as written.
+       - Lightly strengthen their presence, focus, or perceived agency (without inventing new actions, claims, or events).
 
     2. De-Emphasize Men
-       - Replace non-essential male names with neutral roles (e.g., “a spokesperson,” “an official”).
-       - Remove masculine pronouns when possible without harming clarity.
-       - If a male public figure’s name must remain, use only the initial + surname (e.g., “J. Smith”).
+       - If a male figure is *not essential* to the meaning, replace his entire name with a neutral role (e.g., “a spokesperson,” “a city official,” “a representative”).
+       - If a male public figure’s name *must* remain for factual accuracy, leave the full name unchanged. Do NOT convert it to initials here. (A later process will handle this.)
+       - Do NOT change, rewrite, or remove any masculine pronouns. (This will be handled later by another process.)
+       - Do NOT modify any quotes spoken by men.
 
-    3. Keep the article factual, neutral, and similar in length.
+    3. Constraints
+       - Do NOT add background information about anyone.
+       - Do NOT remove or alter factual content.
+       - Keep the length, tone, and structure similar to the original.
+       - Do NOT add commentary, disclaimers, or explanations.
 
-    4. Do NOT add background information about anyone.
+    4. Output
+       - Produce only the rewritten article text.
 
     Now rewrite the article:
 
@@ -149,41 +161,33 @@ prompts:
 
   add_background_on_women: >-
 
-    Add one sentence of accurate, widely known background information after the first mention of each woman in the article, *but only if she is a public figure*.
+    Your task is to insert a brief, factual background sentence after the first mention of each woman in the article, but only if she is a public figure.
 
-    Public figures include:
-    - elected officials
-    - political candidates
-    - public servants
-    - journalists
-    - activists
-    - celebrities
-    - senior academics
-    - well-known professionals
+    Follow these rules precisely:
 
-    Rules:
-    - Add background ONLY for women.
-    - Do NOT add or restore background about men.
-    - Insert each background sentence immediately after her first appearance.
-    - Do not change any events, quotes, or structure.
-    - Remain neutral and factual. No speculation.
+    1. Identify Women
+       - Identify all named women or girls mentioned in the article.
+       - For each one, decide whether she is a public figure.
+       - Public figures include: elected officials, political candidates, public servants, journalists, activists, celebrities, senior academics, or widely known professionals.
+
+    2. Insert Background (Women Only)
+       - For each woman who is a public figure, insert exactly ONE sentence of widely known, factual background.
+       - Insert the sentence immediately after the woman’s first appearance.
+       - The sentence must be factual, concise, and reflect information that is broadly known or easily verifiable.
+
+    3. Do NOT Modify Content
+       - Do NOT change any wording in the original article.
+       - Do NOT remove or rewrite any part of the article.
+       - Do NOT add background information about men.
+       - Do NOT reorder or merge paragraphs.
+       - Do NOT add commentary, explanations, or analysis.
+
+    4. Output Formatting
+       - Return the full article with the inserted background sentences in place.
+       - Do not add headers, labels, or notes.
+       - Do not preface with explanations.
 
     Article:
-
-    clean_summary: >-
-      Create a slightly shorter and cleaner version of the following article.
-
-      The article is already cleaned of ads and boilerplate. Focus only on tightening the narrative while preserving meaning.
-
-      Rules:
-      - Keep all quotes and names exactly as written.
-      - Preserve and emphasize the contributions of women, especially <leader_name>.
-      - Preserve all essential facts and the overall storyline.
-      - Do NOT add new information or reinterpret events.
-      - Do NOT add headers, markdown, or commentary.
-      - The result must be no longer than 500 words.
-
-      Article:
 
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden

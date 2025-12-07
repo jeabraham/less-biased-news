@@ -28,6 +28,7 @@ from ai_queries import (
     clean_summary,
     spin_genders,
     add_background_on_women,
+    clean_article,
 )
 from news_formatter import generate_text, generate_html
 
@@ -513,12 +514,8 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
 def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclient, nlp, gender_map, stats,
                                    summarize_selected = True):
-    body = art["body"]
+    body = clean_article(art["body"], cfg, aiclient)
     doc = nlp(body)
-    if qcfg.get("remove_male_pronouns", False):
-        body = replace_male_pronouns_with_neutral(body)
-    if qcfg.get("male_initials", False):
-        body = replace_male_first_names_with_initials(body, gender_map)
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
     if qcfg.get("classification", "True") in ("True", "true", "yes"):
@@ -569,7 +566,12 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         else:
             # Default to the article's description, but this article will usually be excluded anyways.
             art["content"] = art.get("description", "")
-
+    if qcfg.get("remove_male_pronouns", False):
+        art["content"] = replace_male_pronouns_with_neutral(art["content"])
+    if qcfg.get("male_initials", False):
+        art["content"] = replace_male_first_names_with_initials(art["content"], gender_map)
+    if art["status"] in ("show_full", "spin_genders"):
+        art["content"] = add_background_on_women(art["content"], cfg, aiclient)
 
 def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
     """
