@@ -631,8 +631,8 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         if is_rejected:
             logger.info(f"Article REJECTED: {art.get('title', 'Unknown')}")
             logger.info(f"Rejection response: {rejection_response}")
-            # Mark article as rejected and set status to exclude
-            art["status"] = "rejected"
+            # Mark article as excluded and store rejection response
+            art["status"] = "exclude"
             art["rejection_response"] = rejection_response
             art["content"] = ""
             return  # Skip further processing
