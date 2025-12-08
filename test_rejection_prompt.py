@@ -39,31 +39,31 @@ def test_rejection_prompt():
     ai_util = AIUtils(cfg)
     
     # Test article 1: A good quality article (should be ACCEPTED)
-    good_article = """
-    OTTAWA - Prime Minister Jane Doe announced today a new initiative to support 
-    clean energy development across Canada. The program will invest $500 million 
-    over the next five years to help provinces transition to renewable energy sources.
-    
-    "This is a critical step in addressing climate change," said Doe during a press 
-    conference in Ottawa. "We need to act now to secure a sustainable future for 
-    our children."
-    
-    The initiative has received support from environmental groups and industry leaders 
-    alike, who praised the government's commitment to climate action.
-    """
+    good_article = """\
+OTTAWA - Prime Minister Jane Doe announced today a new initiative to support 
+clean energy development across Canada. The program will invest $500 million 
+over the next five years to help provinces transition to renewable energy sources.
+
+"This is a critical step in addressing climate change," said Doe during a press 
+conference in Ottawa. "We need to act now to secure a sustainable future for 
+our children."
+
+The initiative has received support from environmental groups and industry leaders 
+alike, who praised the government's commitment to climate action.
+"""
     
     # Test article 2: Low-quality promotional content (should be REJECTED)
-    bad_article = """
-    INVEST NOW! Amazing opportunity to make money fast with cryptocurrency!
-    
-    Don't miss out on this incredible investment opportunity. Our proven system 
-    has helped thousands make millions. Click here now to get started!
-    
-    Limited time offer! Act now before it's too late. This is the investment 
-    opportunity of a lifetime. Don't let this pass you by.
-    
-    Join now and start making money today! Guaranteed returns! No risk!
-    """
+    bad_article = """\
+INVEST NOW! Amazing opportunity to make money fast with cryptocurrency!
+
+Don't miss out on this incredible investment opportunity. Our proven system 
+has helped thousands make millions. Click here now to get started!
+
+Limited time offer! Act now before it's too late. This is the investment 
+opportunity of a lifetime. Don't let this pass you by.
+
+Join now and start making money today! Guaranteed returns! No risk!
+"""
     
     logger.info("=" * 80)
     logger.info("Testing rejection prompt with GOOD article")

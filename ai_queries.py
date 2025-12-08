@@ -364,8 +364,8 @@ def reject_classification(text: str, cfg: dict, ai_util, prompt_name: str) -> tu
     """
     tracker = get_timing_tracker()
     
-    # Get the rejection model name
-    rejection_model = cfg.get("ollama", {}).get("rejection_model", cfg.get("ollama", {}).get("model", "llama3.1:8b-instruct-q4_K_M"))
+    # Get the rejection model name for logging/tracking
+    rejection_model = _get_model_name(cfg, "rejection")
     
     with tracker.time_task("reject_classification", rejection_model):
         logger.debug(f"Running rejection classification with prompt: {prompt_name}")
@@ -379,12 +379,12 @@ def reject_classification(text: str, cfg: dict, ai_util, prompt_name: str) -> tu
         # Prioritize: Ollama > Local AI > OpenAI
         if ai_util.ollama_enabled:
             logger.debug(f"Using Ollama rejection model: {rejection_model}")
-            # Temporarily override the task to use rejection_model
-            # We'll call the ollama API directly with the rejection model
+            # Call ollama API with task="rejection" to use rejection_model
+            ollama_cfg = cfg.get("ollama", {})
             result = ai_util._call_ollama_api(
                 f"{prompt}\n\n{text}",
                 max_tokens=200,
-                temperature=cfg.get("ollama", {}).get("temperature", 0.1),
+                temperature=ollama_cfg.get("temperature", 0.1),
                 task="rejection"
             )
         elif ai_util.local_capable:
