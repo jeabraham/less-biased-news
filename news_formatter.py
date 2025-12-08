@@ -794,6 +794,7 @@ def main():
     if args.test:
         logger.info("Using sample data for testing")
         results = create_test_data()
+        metadata = {}  # Test mode doesn't load metadata from files
     else:
         # Find and load real query files
         query_files = find_query_files(args.queries)
@@ -849,7 +850,7 @@ def main():
     elif args.format == 'text':
         output = generate_text(results, metadata, for_email=False)
     elif args.format == 'html':
-        output = generate_html(results, title=args.title)
+        output = generate_html(results, metadata)
     else:
         output = "Invalid format specified"
 
