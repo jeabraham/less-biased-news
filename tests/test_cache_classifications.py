@@ -171,7 +171,10 @@ class TestCacheClassifications:
         openai_client = None
 
         if self.use_openai:
-            openai_pkg.api_key = cfg["openai"]["api_key"]
+            api_key = cfg.get("openai", {}).get("api_key", "")
+            if not api_key:
+                logger.warning("OpenAI API key not configured in config file")
+            openai_pkg.api_key = api_key
             openai_client = openai_pkg
 
         # Get list of prompts dynamically from config

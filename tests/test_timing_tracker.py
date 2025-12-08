@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import os
 import time
 import tempfile
-from timing_tracker import TimingTracker, reset_timing_tracker
+from timing_tracker import TimingTracker
 
 
 def test_basic_timing():

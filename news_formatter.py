@@ -118,15 +118,19 @@ def extract_articles_from_cache(cache_data):
         articles = []
         for article_key, entry in articles_data.items():
             if isinstance(entry, dict) and 'article_data' in entry:
-                articles.append(entry['article_data'])
+                # Validate that article_data is itself a dict
+                article_data = entry['article_data']
+                if isinstance(article_data, dict):
+                    articles.append(article_data)
+                else:
+                    logger.warning(f"Invalid article_data type for key: {article_key}, skipping")
             else:
-                # Fallback: treat entry as article directly if it doesn't have the expected structure
-                logger.warning(f"Unexpected cache entry format for key: {article_key}")
-                articles.append(entry)
+                # Skip invalid entries instead of including them
+                logger.warning(f"Unexpected cache entry format for key: {article_key}, skipping")
         return articles
     else:
         # Old format: articles is already a list
-        return articles_data
+        return articles_data if isinstance(articles_data, list) else []
 
 
 def generate_email_friendly_html(results: dict) -> str:
