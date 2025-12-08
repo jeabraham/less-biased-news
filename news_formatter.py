@@ -349,7 +349,7 @@ def process_article_in_text(article, for_email, article_number, lines, section: 
         lines.append("")
 
 
-def render_article_to_html(article: dict, query_name: str = None) -> str:
+def render_article_to_html(article: dict, query_name: str = None, cfg: dict = None) -> str:
     """
     Render an individual article into HTML format.
 
@@ -359,6 +359,8 @@ def render_article_to_html(article: dict, query_name: str = None) -> str:
         The article object containing details such as title, URL, content, images, etc.
     query_name : str, optional
         If provided, appends the query name to the article title for context.
+    cfg : dict, optional
+        Configuration dict for image sizing
 
     Returns:
     --------
@@ -372,50 +374,133 @@ def render_article_to_html(article: dict, query_name: str = None) -> str:
     url = article.get("url", "#")
     content = article.get("content") or article.get("description") or ""
     status = article.get("status", "")
-
+    
     # Add leader name to the status if applicable
     if article.get("leader_name"):
         status += f" ({article['leader_name']})"
+    
+    # Get source and date information
+    source = article.get("source", "")
+    published = article.get("published_at", article.get("publishedAt", ""))
+    
+    # Format the date if available
+    date_str = ""
+    if published:
+        try:
+            # Try to parse the date and format it nicely
+            dt = datetime.fromisoformat(published.replace('Z', '+00:00'))
+            date_str = dt.strftime("%b %d, %Y")
+        except (ValueError, TypeError):
+            # If parsing fails, use the raw string
+            date_str = published
+    
+    # Build metadata string
+    metadata_parts = []
+    if source:
+        source_name = source.get("name", source) if isinstance(source, dict) else source
+        metadata_parts.append(str(source_name))
+    if date_str:
+        metadata_parts.append(str(date_str))
+    metadata_str = " | ".join(metadata_parts)
 
-    # Start HTML for the article
-    html.append("<li>")
+    # Start HTML for the article with spacing between articles (18pt margin)
+    html.append("<li style='margin-bottom: 18pt;'>")
+    
+    # Article title in bold with metadata in smaller font
     query_display = f" <em>({query_name})</em>" if query_name else ""
-    html.append(f"  [{status}] <a href='{url}' target='_blank'>{title}</a>{query_display}")
-
-    # Include the most relevant image if available
+    html.append(f"  <a href='{url}' target='_blank' style='font-weight: bold;'>{title}</a>{query_display}")
+    
+    # Add status and metadata in smaller font
+    if status or metadata_str:
+        status_metadata = []
+        if status:
+            status_metadata.append(f"[{status}]")
+        if metadata_str:
+            status_metadata.append(metadata_str)
+        html.append(f"  <div style='font-size: 0.85em; color: #666; margin-top: 4pt;'>{' | '.join(status_metadata)}</div>")
+    
+    # Include the most relevant image first (headline image)
     if article.get("most_relevant_image"):
-        size, image_url = get_image_size_and_url(article)
-
-
+        size, image_url = get_image_size_and_url(article, cfg=cfg)
         size_style = f"max-width:{size}px;"
         html.append(f"  <img src='{image_url}' alt='' style='{size_style}'>")
+    
+    # Include all other images that contain women
+    image_analysis = article.get("image_analysis", {})
+    most_relevant_image = article.get("most_relevant_image")
+    for img_url, analysis in image_analysis.items():
+        # Skip the most relevant image (already displayed)
+        if img_url == most_relevant_image:
+            continue
+        # Only include images with women
+        img_status = analysis.get("status", "")
+        if img_status in ("female", "female_majority", "female_prominent"):
+            size, _ = get_image_size_and_url(article, image_url=img_url, cfg=cfg)
+            size_style = f"max-width:{size}px;"
+            html.append(f"  <img src='{img_url}' alt='' style='{size_style}'>")
 
-    # Process and format content into paragraphs
+    # Process and format content into paragraphs with 6pt spacing
     paragraphs = [
         para.strip()
         for block in content.split("\n\n") for para in block.split("\n") if para.strip()
     ]
     for para in paragraphs:
-        html.append(f"  <p>{para}</p>")
+        html.append(f"  <p style='margin-bottom: 6pt;'>{para}</p>")
 
     html.append("</li>")
     return "\n".join(html)
 
 
-def get_image_size_and_url(article):
-    image_url = article["most_relevant_image"]
-    image_status = article.get("most_relevant_status", "")
+def get_image_size_and_url(article, image_url=None, cfg=None):
+    """
+    Calculate appropriate image size based on article status and image classification.
+    
+    Parameters:
+    ----------
+    article : dict
+        The article containing status and image information
+    image_url : str, optional
+        Specific image URL to size (if None, uses most_relevant_image)
+    cfg : dict, optional
+        Configuration dict with image_sizes parameters
+    
+    Returns:
+    --------
+    tuple: (size, image_url)
+    """
+    if image_url is None:
+        image_url = article.get("most_relevant_image")
+    
+    # Get image status - either from specific image or most_relevant
+    if image_url and image_url in article.get("image_analysis", {}):
+        image_status = article["image_analysis"][image_url].get("status", "")
+    else:
+        image_status = article.get("most_relevant_status", "")
+    
+    # Get config defaults or use hardcoded defaults
+    if cfg and "image_sizes" in cfg:
+        img_cfg = cfg["image_sizes"]
+        female_base = img_cfg.get("female_base", 400)
+        no_face_base = img_cfg.get("no_face_base", 200)
+        other_base = img_cfg.get("other_base", 150)
+        leader_multiplier = img_cfg.get("leader_multiplier", 2)
+    else:
+        female_base = 400
+        no_face_base = 200
+        other_base = 150
+        leader_multiplier = 2
+    
     # Determine image size based on its status
     if image_status in ("female", "female_majority", "female_prominent"):
-        base = 400
+        base = female_base
     elif image_status == "no_face":
-        base = 200
+        base = no_face_base
     else:  # male or less relevant images
-        base = 150
+        base = other_base
 
-    # Double size if the article is about a female leader
+    # Multiply size if the article is about a female leader
     if article.get("status") == "female_leader":
-        final = base * 2
+        final = base * leader_multiplier
     else:
         final = base
 
@@ -515,7 +600,7 @@ def render_article_to_email(article: dict, query_name: str = None) -> str:
     FIRST_ARTICLE = False
     return "\n".join(html)
 
-def generate_html(results: dict, metadata: dict = None) -> str:
+def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str:
     """
     Generate an enhanced HTML page from the filtered news results.
 
@@ -527,6 +612,8 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         Dictionary of results, where keys are query names and values are lists of articles.
     metadata : dict, optional
         A dictionary containing additional metadata such as `query_strings`.
+    cfg : dict, optional
+        Configuration dict for image sizing and other settings
 
     Returns:
     --------
@@ -596,7 +683,7 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         for query_name, art in new_today_articles:
             if art.get("status") == "exclude":
                 continue  # Skip excluded articles
-            html.append(render_article_to_html(art, query_name=query_name))
+            html.append(render_article_to_html(art, query_name=query_name, cfg=cfg))
         html.append("      </ul>")
         html.append("      <hr>")
         html.append("    </section>")
@@ -614,7 +701,7 @@ def generate_html(results: dict, metadata: dict = None) -> str:
         for art in articles:
             if art.get("status") == "exclude":
                 continue  # Skip excluded articles
-            html.append(render_article_to_html(art))  # Use the helper function here
+            html.append(render_article_to_html(art, cfg=cfg))  # Use the helper function here
 
         html.append("      </ul>")
         # Add "Table of Contents" link at the end of the section

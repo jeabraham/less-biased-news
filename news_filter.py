@@ -639,10 +639,11 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         else:
             art["status"] = qcfg["fallback"]
 
+    # Process all images to classify them for HTML display (even if we don't use fallback_image_female)
+    process_article_images(art, image_list)
+    
     # Handle article processing based on classification
     if art["status"] == "female_leader":
-        # Let's look for a good picture of a woman
-        process_article_images(art, image_list)
         # If the article is classified as about a female leader, handle content summarization
         if summarize_selected:
             logger.info(f"Clean-summarizing '{art['title']}'")
@@ -651,9 +652,7 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
             # Keep the full fetched body
             art["content"] = body
     else:
-        # Let's check if the first image contains a woman.
-        process_article_images(art, image_list[:1])
-        # Handle fallback logic for image statuses
+        # Handle fallback logic for image statuses (check if first image contains a woman)
         img_stat = art.get("most_relevant_status", "")
         if img_stat in ("female", "female_majority", "female_prominent"):
             art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
@@ -963,7 +962,7 @@ def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text"
         # Extract metadata (query strings) for HTML generation
         metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
         if fmt == "html":
-            out = generate_html(res, metadata)
+            out = generate_html(res, metadata, cfg=cfg)
         else:  # Use plain text formatter for other formats
             out = generate_text(res, metadata)
 
