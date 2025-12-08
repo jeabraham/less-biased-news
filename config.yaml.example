@@ -228,14 +228,26 @@ prompts:
 
     ARTICLE:
 
-  reject_classification_prompt_1: >-
-    Determine whether this article should be accepted or rejected based on its content quality and relevance.
+  reject_classification_prompt_1: |
+    Classify the following article.
+    Your job is to decide whether it should be REJECTED or ACCEPTED.
 
     Return exactly one of the following as the FIRST word of the output:
     ACCEPT
     REJECT
 
     After the first word, you may optionally add a brief explanation.
+
+    Reject the article if ANY of the following are true:
+
+    1. It is an advertisement for a product or service.
+    2. It focuses primarily on stock-market movements, investment tips, or trading signals.
+    3. It discusses only male politicians, leaders, or authority figures, with no women or girls mentioned at all.
+    4. It is dismissive, degrading, or hostile toward women or girls.
+    5. It reinforces traditional gender roles in a way that minimizes or reduces women’s importance
+       (EXCEPTION: Do NOT reject if the article praises or glorifies women in a traditional role).
+
+    If none of the above conditions apply, return ACCEPT.
 
     ARTICLE:
 
