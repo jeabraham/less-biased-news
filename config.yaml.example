@@ -345,9 +345,9 @@ queries:
     classification: true
     languages: en
     sources: "-americanbankingnews"
+    rejection_prompt: reject_classification_prompt_1
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
-    rejection_prompt: reject_classification_prompt_1
     summarize_selected: true
     fallback_image_female: short_summary     # if a woman’s face is prominent
     male_initials: true
