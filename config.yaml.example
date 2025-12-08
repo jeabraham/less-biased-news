@@ -1,267 +1,132 @@
-# Global API settings
+# =============================================================================
+# LESS-BIASED NEWS CONFIGURATION FILE
+# =============================================================================
+# This configuration file controls all aspects of the news filtering system.
+# Copy this file to config.yaml and fill in your API keys and preferences.
+
+# =============================================================================
+# NEWS API PROVIDERS
+# =============================================================================
+# Configure your news sources. You need at least one provider configured.
+
+# NewsAPI (https://newsapi.org)
+# Free tier: 100 requests/day, developer tier: 250 requests/day
 newsapi:
-  api_key: ""
-  language: "en"
+  api_key: ""          # Your NewsAPI key from https://newsapi.org/register
+  language: "en"       # Default language for queries (ISO 639-1 code)
 
+# MediaStack (https://mediastack.com)
+# Free tier: 500 requests/month
 mediastack:
-  access_key: ""
-  base_url: "http://api.mediastack.com/v1/news"
-  delay: 60
+  access_key: ""       # Your MediaStack access key from https://mediastack.com/signup/free
+  base_url: "http://api.mediastack.com/v1/news"  # API endpoint
+  delay: 60            # Minimum seconds between API calls to respect rate limits
 
+# =============================================================================
+# AI/LLM CONFIGURATION
+# =============================================================================
+# Configure AI models for article analysis, classification, and rewriting.
+# You can use either OpenAI (cloud) or Ollama (local) or both.
+
+# OpenAI Configuration (cloud-based)
+# Sign up at https://platform.openai.com
 openai:
-  api_key: ""
-  model: "gpt-4"  # Default model if task-specific model not specified
-  # Task-specific models
-  classify_leadership_model: "gpt-3.5-turbo"
-  short_summary_model: "gpt-3.5-turbo"
-  clean_article_model: "gpt-3.5-turbo"
-  clean_summary_model: "gpt-4"
-  spin_genders_model: "gpt-4"
-  add_background_on_women_model: "gpt-4"
-  max_tokens: 16000
-  temperature: 0.1
-# Apparently max tokens is 16385 but we're approximating at 4 chars per token so we'll dial it down to 16000
+  api_key: ""          # Your OpenAI API key
+  model: "gpt-4"       # Default model if task-specific model not specified
+  
+  # Task-specific models (you can use different models for different tasks)
+  classify_leadership_model: "gpt-3.5-turbo"      # Classify if article features women in leadership
+  short_summary_model: "gpt-3.5-turbo"            # Create brief article summaries
+  clean_article_model: "gpt-3.5-turbo"            # Remove ads and boilerplate from articles
+  clean_summary_model: "gpt-4"                    # Create detailed summaries
+  spin_genders_model: "gpt-4"                     # Rewrite articles with feminist perspective
+  add_background_on_women_model: "gpt-4"          # Add context about women mentioned
+  
+  max_tokens: 16000    # Maximum tokens for context (GPT-4 supports up to 16385)
+  temperature: 0.1     # Lower = more deterministic, higher = more creative (0.0-2.0)
 
-# For a faster linux machine with NVIDIA GPU
-#ollama:
-#  enabled: True  # Set to True to use Ollama instead of OpenAI
-#  #base_url: "http://brooks.office.hbaspecto.com:11434"  # Default Ollama API endpoint
-#  model: "llama3.1:8b-instruct-q4_0"  # Default model if task-specific model not specified
-#  # Task-specific models
-#  clean_article_model: "llama3.1:8b-instruct-q4_0"
-#  short_summary_model: "qwen2.5:7b"
-#  clean_summary_model: "llama3.1:8b-instruct-q4_0"
-#  add_background_on_women_model: "milkey/GLM-4-9B-0414:Q4_K_M"
-#  classification_model: "llama3.1:8b"
-#  spin_genders_model: "interstellarninja/hermes-2-pro-llama-3-8b:latest"
-
+# Ollama Configuration (local/self-hosted LLMs)
+# Free and runs locally. See docs/OLLAMA_SETUP.md for installation instructions.
+# Download models with: ollama pull <model-name>
 ollama:
-  enabled: True  # Set to True to use Ollama instead of OpenAI
-  #base_url: "http://brooks.office.hbaspecto.com:11434"  # Default Ollama API endpoint
-  base_url: "http://localhost:11434"  # Default Ollama API endpoint
+  enabled: True        # Set to True to use Ollama instead of OpenAI
+  base_url: "http://localhost:11434"  # Ollama API endpoint (change if running remotely)
   model: "llama3.1:8b-instruct-q4_K_M"  # Default model if task-specific model not specified
-  # Task-specific models
-  clean_article_model: "qwen2.5:1.5b"
-  short_summary_model: "llama3.1:8b-instruct-q4_K_M"
-  clean_summary_model: "llama3.1:8b-instruct-q4_K_M"  # or llama3.1:8b
-  add_background_on_women_model: "llama3.1:8b-instruct-q4_K_M"
-  classification_model: "llama3.1:8b-instruct-q4_K_M"
-  spin_genders_model: "interstellarninja/hermes-2-pro-llama-3-8b:latest"
-  rejection_model: "qwen2.5:1.5b"
-
-  # fallback models
+  
+  # Task-specific models optimized for different tasks
+  # Smaller models (1.5b, 7b) are faster but less accurate
+  # Larger models (8b, 13b+) are slower but more capable
+  clean_article_model: "qwen2.5:1.5b"                              # Fast model for simple cleaning
+  short_summary_model: "llama3.1:8b-instruct-q4_K_M"               # Good balance for summaries
+  clean_summary_model: "llama3.1:8b-instruct-q4_K_M"               # Detailed summary generation
+  add_background_on_women_model: "llama3.1:8b-instruct-q4_K_M"     # Context addition
+  classification_model: "llama3.1:8b-instruct-q4_K_M"              # Leadership classification
+  spin_genders_model: "interstellarninja/hermes-2-pro-llama-3-8b:latest"  # Article rewriting
+  rejection_model: "qwen2.5:1.5b"                                  # Fast rejection filtering
+  
+  # Fallback models (used if primary model fails)
   spin_genders_fallback: "dolphin3:latest"
   summary_fallback: "qwen2.5:7b"
-  temperature: 0.1
-  max_tokens: 8192  # Maximum tokens for completion
+  
+  temperature: 0.1     # Lower = more consistent, higher = more creative (0.0-1.0)
+  max_tokens: 8192     # Maximum tokens for completion
 
-# DEPRECATED: localai is deprecated in favor of Ollama for local LLM inference
+# DEPRECATED: LocalAI is no longer supported. Use Ollama instead.
 # localai:
-#   "enabled": False
-#   "min_ram": 16
-#   "min_cores": 8
-#   "max_input_tokens": 2048
-#   "local_model": "Zyphra/Zamba2-2.7B-instruct"
-#   "cpu_model_name": "Zyphra/Zamba2-2.7B-instruct"
-#   "local_model_path": "models/Zyphra"
-#   "max_memory_mps": "6GB"
-#   "max_memory_cpu": "58GB"
+#   enabled: False
 
+# =============================================================================
+# LOCAL SUMMARIZATION (non-LLM)
+# =============================================================================
+# Use Facebook BART model for basic text summarization without AI API calls
 local_summarization:
-    "enabled": True
-    "model": "facebook/bart-large-cnn"
+  enabled: True
+  model: "facebook/bart-large-cnn"  # Hugging Face model for summarization
 
-# The number of images to get from the news source to look for women.
-max_images: 5
+# =============================================================================
+# IMAGE ANALYSIS
+# =============================================================================
+# Configure how article images are analyzed for gender representation
+
+max_images: 5          # Number of images to analyze per article (more = slower but more thorough)
 
 # Image sizing configuration for HTML output
+# Controls how images are displayed based on their content
 image_sizes:
-  female_base: 600          # Base size for images with female faces
-  no_face_base: 300         # Base size for images with no faces
-  other_base: 250           # Base size for other images (male or low confidence)
-  leader_multiplier: 1.5      # Multiply image size by this for female_leader articles
+  female_base: 600          # Base pixel width for images featuring women
+  no_face_base: 300         # Base pixel width for images with no faces
+  other_base: 250           # Base pixel width for other images (male faces, mixed, etc.)
+  leader_multiplier: 1.5    # Multiply image size by this factor for articles about female leaders
 
-# Control how female leadership is identified
+# =============================================================================
+# FEMALE LEADERSHIP DETECTION
+# =============================================================================
+# Control how the system identifies articles about women in leadership roles
 female_leadership_detection:
-  use_local_checks: True  # If True, check for female names and leadership keywords before calling LLM
-  require_female_names: True  # Only call LLM if female names are detected
-  require_leadership_keywords: False  # Only call LLM if leadership keywords are detected
+  use_local_checks: True       # Use fast local name/keyword checks before calling AI
+  require_female_names: True   # Only call AI if female names detected (saves API calls)
+  require_leadership_keywords: False  # Only call AI if leadership terms found
 
-
-# Prompts for OpenAI
-prompts:
-  clean_article: >-
-    Below is a news article copied from an online news source.
-
-    Return the article *exactly as written* except for the following removals:
-    - ads
-    - subscription prompts
-    - paywall text
-    - navigation lists
-    - “related stories” or “story continues below”
-    - promotional blocks
-    - social media prompts
-    - newsletter signups
-    - cookie notices
-    - photo captions not part of the narrative
-    - any boilerplate not part of the article's main text
-
-    Rules:
-    - Do NOT rephrase, summarize, explain, or add commentary.
-    - Do NOT add any introduction, explanation, or lead-in.
-    - Output *only* the cleaned article text.
-    - Begin your output with the first word of the cleaned article.
-
-    ARTICLE:
-
-  classification: >-
-    You are a classifier.
-
-    Task:
-    Read the article.
-    Determine whether the article includes at least one WOMAN in a genuine leadership role.
-
-    Rules:
-    - If you find at least one woman in a leadership role, answer exactly:
-      yes [Full Name]
-      (Example: yes Jane Smith)
-    - If you do not, answer exactly:
-      no
-
-    Do not add any extra words.
-
-    Article:
-
-  short_summary: >-
-    Summarize the article snippet in exactly two sentences.
-
-    Output format:
-    <Sentence 1> <Sentence 2>
-
-    Do NOT add anything before, after, or between the two sentences.
-
-    No preamble. No labels. No commentary.
-
-    Article:
-
-  spin_genders: >-
-    You will transform the following news article. The transformation must
-    preserve all facts exactly as written.
-
-    Before you begin, read these rules carefully:
-
-    NON-NEGOTIABLE FACT RULES:
-    1. Do NOT change any gender, sex, family role, or identity.
-    2. Do NOT change who was injured, who died, who survived, or who performed any action.
-    3. Do NOT change the sequence of events, the causal relations, or the results.
-    4. Do NOT change or paraphrase any quotes.
-    5. Do NOT insert new events, new actions, new motives, or new participants.
-
-    TRANSFORMATION RULES:
-    6. Apply a mild feminist reframing while preserving all facts.
-    7. Preserve all full names of women exactly as written.
-    8. Preserve all quotes spoken by women exactly.
-    9. You may replace non-essential male names with neutral roles such as
-       “a spokesperson,” “a city official,” or “a representative.”
-    10. If a male name is required for factual accuracy, leave it unchanged.
-    11. Do NOT alter male pronouns. They will be handled later.
-    12. Keep the length and structure similar to the original.
-    13. Do NOT add commentary, biography, ideology, or background.
-    14. Do NOT summarize or shorten unless necessary for clarity.
-
-    OUTPUT RULES:
-    15. Output only the transformed article.
-    16. Do NOT add any introduction, explanation, commentary, or section headings.
-
-    ARTICLE:
-
-  add_background_on_women: >-
-    Insert one brief, accurate, widely known background sentence immediately after the first mention of each woman in the article, but only if she is a public figure.
-
-    Public figures include:
-    - elected officials
-    - political candidates
-    - public servants
-    - journalists
-    - activists
-    - celebrities
-    - senior academics
-    - widely recognized professionals
-
-    Rules:
-    - Add background ONLY for women.
-    - Do NOT add or restore information about men.
-    - Do NOT change wording, facts, quotes, or structure.
-    - Do NOT add any explanation of what you are doing.
-    - Output only the modified article.
-    - Begin your output with the first word of the revised article.
-
-    ARTICLE:
-
-
-  clean_summary: |
-    Create a cleaner, tighter version of the article below.
-
-    The input article has already been cleaned of ads and boilerplate.
-
-    Two modes:
-    1. If the article is a normal news report with real facts, real people, and real quotes:
-       - Preserve all quotes exactly.
-       - Preserve all names and factual details.
-       - Keep the structure the same.
-       - Only tighten wording and reduce redundancy.
-
-    2. If the article is obviously promotional, repetitive, low-information,
-       or not a legitimate news report (e.g., SEO spam about casinos,
-       investments, crypto, miracle cures, or generic lifestyle advice):
-       - Remove repetitive filler and marketing fluff.
-       - Preserve only concrete factual statements, if any.
-       - Produce a concise, factual summary under 500 words.
-
-    General rules:
-    • Emphasize the contributions of women when they appear, especially <leader_name>.
-    • Do not add new facts or interpretations.
-    • Do not fabricate quotes or names.
-    • Do not add commentary, headings, or markdown.
-    • Final output must be under 500 words.
-    • Begin the output with the first word of the rewritten article.
-
-    ARTICLE:
-
-  reject_classification_prompt_1: |
-    Classify the following article.
-    Your job is to decide whether it should be REJECTED or ACCEPTED.
-
-    Return exactly one of the following as the FIRST word of the output:
-    ACCEPT
-    REJECT
-
-    After the first word, you may optionally add a brief explanation.
-
-    Reject the article if ANY of the following are true:
-
-    1. It is an advertisement for a product or service.
-    2. It focuses primarily on stock-market movements, investment tips, or trading signals.
-    3. It discusses only male politicians, leaders, or authority figures, with no women or girls mentioned at all.
-    4. It is dismissive, degrading, or hostile toward women or girls.
-    5. It reinforces traditional gender roles in a way that minimizes or reduces women’s importance
-       (EXCEPTION: Do NOT reject if the article praises or glorifies women in a traditional role).
-
-    If none of the above conditions apply, return ACCEPT.
-
-    ARTICLE:
-
-# Global defaults
-default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
-
+# =============================================================================
+# GENDERIZE API
+# =============================================================================
+# Used to determine likely gender from first names
 genderize:
-  api_url: "https://api.genderize.io"
+  api_url: "https://api.genderize.io"  # Free API, 1000 requests/day without key
 
+# =============================================================================
+# LEADERSHIP KEYWORDS
+# =============================================================================
+# Terms that indicate someone might be in a leadership position
+# Used for initial filtering before AI analysis
 leadership_keywords:
   - CEO
   - president
   - minister
   - chair
+  - chairwoman
+  - chairman
+  - chairperson
   - director
   - founder
   - co-founder
@@ -303,101 +168,325 @@ leadership_keywords:
   - rector
   - headmistress
   - premier
-  - minister
   - sheriff
-  - chairman
-  - chairwoman
   - treasurer
-  - chairperson
   - trustee
   - councillor
   - advisor
   - coach
   - mediator
 
-# Define as many queries as you like:
-#   - `q`: your NewsAPI query (supports quoted phrases, +/– prefixes, AND/OR/NOT)
-#   - `classification`: whether to apply the female-leadership filter
-#   - `fallback`: what to do with non-female-leadership articles
-#       * show_full: include original
-#       * short_summary: replace content with OpenAI summary
-#       * spin_genders: rewrite via OpenAI with female spin
-#       * exclude: drop it
+# =============================================================================
+# AI PROMPTS
+# =============================================================================
+# Customize the prompts sent to AI models for various tasks
+# These control how the AI processes and transforms article text
+
+prompts:
+  # Remove ads, subscription prompts, and boilerplate from scraped articles
+  clean_article: >-
+    Below is a news article copied from an online news source.
+
+    Return the article *exactly as written* except for the following removals:
+    - ads
+    - subscription prompts
+    - paywall text
+    - navigation lists
+    - "related stories" or "story continues below"
+    - promotional blocks
+    - social media prompts
+    - newsletter signups
+    - cookie notices
+    - photo captions not part of the narrative
+    - any boilerplate not part of the article's main text
+
+    Rules:
+    - Do NOT rephrase, summarize, explain, or add commentary.
+    - Do NOT add any introduction, explanation, or lead-in.
+    - Output *only* the cleaned article text.
+    - Begin your output with the first word of the cleaned article.
+
+    ARTICLE:
+
+  # Determine if article features women in genuine leadership roles
+  classification: >-
+    You are a classifier.
+
+    Task:
+    Read the article.
+    Determine whether the article includes at least one WOMAN in a genuine leadership role.
+
+    Rules:
+    - If you find at least one woman in a leadership role, answer exactly:
+      yes [Full Name]
+      (Example: yes Jane Smith)
+    - If you do not, answer exactly:
+      no
+
+    Do not add any extra words.
+
+    Article:
+
+  # Create a brief two-sentence summary of an article
+  short_summary: >-
+    Summarize the article snippet in exactly two sentences.
+
+    Output format:
+    <Sentence 1> <Sentence 2>
+
+    Do NOT add anything before, after, or between the two sentences.
+
+    No preamble. No labels. No commentary.
+
+    Article:
+
+  # Rewrite article with feminist perspective while preserving all facts
+  spin_genders: >-
+    You will transform the following news article. The transformation must
+    preserve all facts exactly as written.
+
+    Before you begin, read these rules carefully:
+
+    NON-NEGOTIABLE FACT RULES:
+    1. Do NOT change any gender, sex, family role, or identity.
+    2. Do NOT change who was injured, who died, who survived, or who performed any action.
+    3. Do NOT change the sequence of events, the causal relations, or the results.
+    4. Do NOT change or paraphrase any quotes.
+    5. Do NOT insert new events, new actions, new motives, or new participants.
+
+    TRANSFORMATION RULES:
+    6. Apply a mild feminist reframing while preserving all facts.
+    7. Preserve all full names of women exactly as written.
+    8. Preserve all quotes spoken by women exactly.
+    9. You may replace non-essential male names with neutral roles such as
+       "a spokesperson," "a city official," or "a representative."
+    10. If a male name is required for factual accuracy, leave it unchanged.
+    11. Do NOT alter male pronouns. They will be handled later.
+    12. Keep the length and structure similar to the original.
+    13. Do NOT add commentary, biography, ideology, or background.
+    14. Do NOT summarize or shorten unless necessary for clarity.
+
+    OUTPUT RULES:
+    15. Output only the transformed article.
+    16. Do NOT add any introduction, explanation, commentary, or section headings.
+
+    ARTICLE:
+
+  # Add brief background context for public figure women mentioned in articles
+  add_background_on_women: >-
+    Insert one brief, accurate, widely known background sentence immediately after the first mention of each woman in the article, but only if she is a public figure.
+
+    Public figures include:
+    - elected officials
+    - political candidates
+    - public servants
+    - journalists
+    - activists
+    - celebrities
+    - senior academics
+    - widely recognized professionals
+
+    Rules:
+    - Add background ONLY for women.
+    - Do NOT add or restore information about men.
+    - Do NOT change wording, facts, quotes, or structure.
+    - Do NOT add any explanation of what you are doing.
+    - Output only the modified article.
+    - Begin your output with the first word of the revised article.
+
+    ARTICLE:
+
+  # Create detailed, polished summary emphasizing women's contributions
+  clean_summary: |
+    Create a cleaner, tighter version of the article below.
+
+    The input article has already been cleaned of ads and boilerplate.
+
+    Two modes:
+    1. If the article is a normal news report with real facts, real people, and real quotes:
+       - Preserve all quotes exactly.
+       - Preserve all names and factual details.
+       - Keep the structure the same.
+       - Only tighten wording and reduce redundancy.
+
+    2. If the article is obviously promotional, repetitive, low-information,
+       or not a legitimate news report (e.g., SEO spam about casinos,
+       investments, crypto, miracle cures, or generic lifestyle advice):
+       - Remove repetitive filler and marketing fluff.
+       - Preserve only concrete factual statements, if any.
+       - Produce a concise, factual summary under 500 words.
+
+    General rules:
+    • Emphasize the contributions of women when they appear, especially <leader_name>.
+    • Do not add new facts or interpretations.
+    • Do not fabricate quotes or names.
+    • Do not add commentary, headings, or markdown.
+    • Final output must be under 500 words.
+    • Begin the output with the first word of the rewritten article.
+
+    ARTICLE:
+
+  # Reject articles that aren't relevant or appropriate
+  reject_classification_prompt_1: |
+    Classify the following article.
+    Your job is to decide whether it should be REJECTED or ACCEPTED.
+
+    Return exactly one of the following as the FIRST word of the output:
+    ACCEPT
+    REJECT
+
+    After the first word, you may optionally add a brief explanation.
+
+    Reject the article if ANY of the following are true:
+
+    1. It is an advertisement for a product or service.
+    2. It focuses primarily on stock-market movements, investment tips, or trading signals.
+    3. It discusses only male politicians, leaders, or authority figures, with no women or girls mentioned at all.
+    4. It is dismissive, degrading, or hostile toward women or girls.
+    5. It reinforces traditional gender roles in a way that minimizes or reduces women's importance
+       (EXCEPTION: Do NOT reject if the article praises or glorifies women in a traditional role).
+
+    If none of the above conditions apply, return ACCEPT.
+
+    ARTICLE:
+
+# =============================================================================
+# GLOBAL DEFAULTS
+# =============================================================================
+default_summarize_selected: true   # Apply clean_summary to all female_leader articles unless overridden
+
+# =============================================================================
+# NEWS QUERIES
+# =============================================================================
+# Define what news to fetch and how to process it.
+# Each query block represents a different news topic or search.
+
 queries:
+  # Example query: Calgary local news
+  - name: Calgary                    # Display name for this query
+    provider: newsapi                # Which API to use: newsapi or mediastack
+    q: "Calgary"                     # Search query (supports boolean operators)
+    page_size: 10                    # Number of articles to fetch per request
+    classification: false            # Whether to check for female leadership
+    
+    # Fallback options: what to do with articles that don't feature women leaders
+    # Options: show_full, short_summary, spin_genders, exclude
+    fallback: short_summary          # Default fallback for non-leader articles
+    fallback_women: spin_genders     # Fallback when women mentioned but not in leadership
+    fallback_image_female: spin_genders  # Fallback when article has images of women
+    
+    summarize_selected: true         # Apply detailed summary to female_leader articles
+    male_initials: true              # Replace male names with initials (e.g., "John S.")
+    remove_male_pronouns: true       # Remove/neutralize male pronouns
 
-  - name: Calgary
-    provider: newsapi
-    q: "Calgary"
-    page_size: 10
-    classification: false
-    fallback_image_female: spin_genders
-    fallback: short_summary  # Options: show_full, short_summary, spin
-    fallback_women: spin_genders
-    summarize_selected: true
-    male_initials: true
-    remove_male_pronouns: true
-
+  # Example query: Canada news with business/stock content filtered out
   - name: Canada
     provider: mediastack
+    # Complex query with exclusions (syntax varies by provider)
     q: "Canada,-investing,-investment,-share,-market capitalization,-earnings per share,-shares,-stock,-business.-wall street,-stock market,-stocks,-strong-buy,-finance,-earnings,-price target,-target price,-www.americanbankingnews.com,-banking"
-    categories: "-business"  # exclude business news, really we want to exclude share purchases and stock market news
+    categories: "-business"          # MediaStack: exclude business category
     page_size: 35
-    classification: true
-    languages: en
-    sources: "-americanbankingnews"
-    rejection_prompt: reject_classification_prompt_1
-    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
-    fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
+    classification: true             # Check each article for female leadership
+    languages: en                    # MediaStack: language filter
+    sources: "-americanbankingnews"  # MediaStack: exclude specific sources
+    rejection_prompt: reject_classification_prompt_1  # Apply rejection filter
+    fallback: short_summary
+    fallback_women: spin_genders
+    fallback_image_female: short_summary
     summarize_selected: true
-    fallback_image_female: short_summary     # if a woman’s face is prominent
     male_initials: true
     remove_male_pronouns: true
-#    countries: ca doesn't work
-#    history_days: 5       History seems to not work at least not the way we're doing it with the free API tier.
+    # countries: ca                  # MediaStack: filter by country (not working in free tier)
+    # history_days: 5                # MediaStack: how many days of history (not working in free tier)
 
+  # Example query: Global News articles with strict filtering
   - name: Global News
     provider: newsapi
-    q: 'Global News'
+    q: 'Global News'                 # Exact phrase search (use quotes)
     page_size: 100
-    history_days: 5       # override default: grab the last 14 days
+    history_days: 5                  # NewsAPI: fetch articles from last N days
     classification: true
-    fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
-    fallback_image_female: short_summary     # if a woman’s face is prominent
+    fallback: exclude                # Exclude articles without female leaders
+    fallback_image_female: short_summary
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
 
+  # Example query: Focused search for articles about women in Canada
   - name: Canada Women
     provider: newsapi
-    q: '"Canada" and ("woman" or "women" or "girl")'
+    q: '"Canada" and ("woman" or "women" or "girl")'  # Boolean query
     page_size: 20
     classification: true
-    fallback: spin_genders  # Options: show_full, short_summary, spin_genders, exclude
-    fallback_image_female: spin_genders     # if a woman’s face is prominent
+    fallback: spin_genders           # Rewrite all articles with feminist perspective
+    fallback_image_female: spin_genders
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
 
+  # Example query: Skiing news
   - name: Skiing
     provider: newsapi
     q: '"Skiing"'
     page_size: 25
     classification: true
-    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback: short_summary
     fallback_women: spin_genders
-    fallback_image_female: show_full     # if a woman’s face is prominent
+    fallback_image_female: show_full  # Show full article if woman's image present
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
 
+  # Example query: Trombone news (specialized interest)
   - name: Trombone
     provider: newsapi
     q: '"Trombone"'
     page_size: 20
     classification: true
-    fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
+    fallback: short_summary
     fallback_women: spin_genders
-    fallback_image_female: show_full     # if a woman’s face is prominent
+    fallback_image_female: show_full
     summarize_selected: true
-    male_initials: false
-    remove_male_pronouns: false
+    male_initials: false             # Keep male names in this query
+    remove_male_pronouns: false      # Keep male pronouns in this query
+
+# =============================================================================
+# QUERY PARAMETER REFERENCE
+# =============================================================================
+#
+# Required parameters for each query:
+# - name: Unique identifier for this query
+# - provider: "newsapi" or "mediastack"
+# - q: Search query string
+#
+# Optional NewsAPI parameters:
+# - page_size: Number of results per request (max 100)
+# - history_days: Fetch articles from last N days
+# - language: Language code (e.g., "en", "fr")
+#
+# Optional MediaStack parameters:
+# - page_size: Number of results per request (max 100 for paid, 25 for free)
+# - languages: Comma-separated language codes
+# - countries: Comma-separated country codes (paid tier only)
+# - categories: Comma-separated categories or "-category" to exclude
+# - sources: Comma-separated source names or "-source" to exclude
+#
+# Processing options:
+# - classification: true/false - Check for female leadership
+# - rejection_prompt: Name of rejection prompt to use (optional)
+# - summarize_selected: true/false - Apply detailed summary to leader articles
+# - male_initials: true/false - Replace male names with initials
+# - remove_male_pronouns: true/false - Neutralize male pronouns
+#
+# Fallback strategies (applied when article doesn't meet criteria):
+# - show_full: Include original article unchanged
+# - short_summary: Replace with brief AI summary
+# - spin_genders: Rewrite with feminist perspective
+# - exclude: Don't include in output
+#
+# Fallback variants (each can have different strategy):
+# - fallback: Default for non-leader articles
+# - fallback_women: When women mentioned but not in leadership
+# - fallback_image_female: When article images feature women
+#
+# =============================================================================
