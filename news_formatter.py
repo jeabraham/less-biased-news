@@ -4,6 +4,9 @@ import argparse
 from datetime import datetime
 import textwrap
 
+# Constants for image status classification
+FEMALE_IMAGE_STATUSES = ("female", "female_majority", "female_prominent")
+
 
 def setup_logging():
     """
@@ -375,9 +378,12 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
     content = article.get("content") or article.get("description") or ""
     status = article.get("status", "")
     
-    # Add leader name to the status if applicable
-    if article.get("leader_name"):
-        status += f" ({article['leader_name']})"
+    # Build status display string with leader name if applicable
+    status_display = ""
+    if status:
+        status_display = status
+        if article.get("leader_name"):
+            status_display += f" ({article['leader_name']})"
     
     # Get source and date information
     source = article.get("source", "")
@@ -387,12 +393,26 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
     date_str = ""
     if published:
         try:
-            # Try to parse the date and format it nicely
-            dt = datetime.fromisoformat(published.replace('Z', '+00:00'))
+            # Handle common date formats
+            # Replace 'Z' with '+00:00' for ISO format compatibility
+            date_to_parse = published
+            if published.endswith('Z'):
+                date_to_parse = published.replace('Z', '+00:00')
+            
+            dt = datetime.fromisoformat(date_to_parse)
             date_str = dt.strftime("%b %d, %Y")
-        except (ValueError, TypeError):
-            # If parsing fails, use the raw string
-            date_str = published
+        except (ValueError, TypeError, AttributeError):
+            # If parsing fails, try to extract just the date part if it looks like YYYY-MM-DD
+            try:
+                if isinstance(published, str) and len(published) >= 10:
+                    date_part = published[:10]  # Extract YYYY-MM-DD
+                    dt = datetime.strptime(date_part, "%Y-%m-%d")
+                    date_str = dt.strftime("%b %d, %Y")
+                else:
+                    date_str = str(published)[:10] if published else ""
+            except (ValueError, TypeError):
+                # Last resort: use the raw string (truncated if too long)
+                date_str = str(published)[:20] if published else ""
     
     # Build metadata string
     metadata_parts = []
@@ -411,10 +431,10 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
     html.append(f"  <a href='{url}' target='_blank' style='font-weight: bold;'>{title}</a>{query_display}")
     
     # Add status and metadata in smaller font
-    if status or metadata_str:
+    if status_display or metadata_str:
         status_metadata = []
-        if status:
-            status_metadata.append(f"[{status}]")
+        if status_display:
+            status_metadata.append(f"[{status_display}]")
         if metadata_str:
             status_metadata.append(metadata_str)
         html.append(f"  <div style='font-size: 0.85em; color: #666; margin-top: 4pt;'>{' | '.join(status_metadata)}</div>")
@@ -423,7 +443,7 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
     if article.get("most_relevant_image"):
         size, image_url = get_image_size_and_url(article, cfg=cfg)
         size_style = f"max-width:{size}px;"
-        html.append(f"  <img src='{image_url}' alt='' style='{size_style}'>")
+        html.append(f"  <img src='{image_url}' alt='Article image' style='{size_style}'>")
     
     # Include all other images that contain women
     image_analysis = article.get("image_analysis", {})
@@ -434,10 +454,10 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
             continue
         # Only include images with women
         img_status = analysis.get("status", "")
-        if img_status in ("female", "female_majority", "female_prominent"):
+        if img_status in FEMALE_IMAGE_STATUSES:
             size, _ = get_image_size_and_url(article, image_url=img_url, cfg=cfg)
             size_style = f"max-width:{size}px;"
-            html.append(f"  <img src='{img_url}' alt='' style='{size_style}'>")
+            html.append(f"  <img src='{img_url}' alt='Article image' style='{size_style}'>")
 
     # Process and format content into paragraphs with 6pt spacing
     paragraphs = [
@@ -491,7 +511,7 @@ def get_image_size_and_url(article, image_url=None, cfg=None):
         leader_multiplier = 2
     
     # Determine image size based on its status
-    if image_status in ("female", "female_majority", "female_prominent"):
+    if image_status in FEMALE_IMAGE_STATUSES:
         base = female_base
     elif image_status == "no_face":
         base = no_face_base
@@ -626,7 +646,6 @@ def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str
     metadata = metadata or {}
 
     # Get the current date and time
-    from datetime import datetime
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Initialize the HTML output
