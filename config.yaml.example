@@ -47,6 +47,7 @@ ollama:
   add_background_on_women_model: "llama3.1:8b-instruct-q4_K_M"
   classification_model: "llama3.1:8b-instruct-q4_K_M"
   spin_genders_model: "interstellarninja/hermes-2-pro-llama-3-8b:latest"
+  rejection_model: "qwen2.5:1.5b"
 
   # fallback models
   spin_genders_fallback: "dolphin3:latest"
@@ -227,6 +228,29 @@ prompts:
 
     ARTICLE:
 
+  reject_classification_prompt_1: |
+    Classify the following article.
+    Your job is to decide whether it should be REJECTED or ACCEPTED.
+
+    Return exactly one of the following as the FIRST word of the output:
+    ACCEPT
+    REJECT
+
+    After the first word, you may optionally add a brief explanation.
+
+    Reject the article if ANY of the following are true:
+
+    1. It is an advertisement for a product or service.
+    2. It focuses primarily on stock-market movements, investment tips, or trading signals.
+    3. It discusses only male politicians, leaders, or authority figures, with no women or girls mentioned at all.
+    4. It is dismissive, degrading, or hostile toward women or girls.
+    5. It reinforces traditional gender roles in a way that minimizes or reduces women’s importance
+       (EXCEPTION: Do NOT reject if the article praises or glorifies women in a traditional role).
+
+    If none of the above conditions apply, return ACCEPT.
+
+    ARTICLE:
+
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
 
@@ -323,6 +347,7 @@ queries:
     sources: "-americanbankingnews"
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
+    rejection_prompt: reject_classification_prompt_1
     summarize_selected: true
     fallback_image_female: short_summary     # if a woman’s face is prominent
     male_initials: true
