@@ -44,12 +44,12 @@ def load_json(file_path: str):
 
 def find_query_files(queries=None, cache_dir="cache"):
     """
-    Locate cache files based on queries. If queries aren't specified, find all `_current.json` files.
+    Locate cache files based on queries. If queries aren't specified, find all `_cache.json` files.
 
     Parameters:
     ----------
     queries : list of str, optional
-        List of queries provided by the user. If None, searches for all available `_current.json` files.
+        List of queries provided by the user. If None, searches for all available `_cache.json` files.
 
     Returns:
     --------
@@ -66,20 +66,16 @@ def find_query_files(queries=None, cache_dir="cache"):
     if queries:
         # Look for files based on user-specified queries
         for query in queries:
-            current_file = os.path.join(cache_dir, f"{query}_current.json")
-            yesterday_file = os.path.join(cache_dir, f"{query}_yesterday.json")
-
-            if os.path.exists(current_file):
-                cache_files[query] = current_file
-            elif os.path.exists(yesterday_file):
-                cache_files[query] = yesterday_file
+            cache_file = os.path.join(cache_dir, f"{query}_cache.json")
+            if os.path.exists(cache_file):
+                cache_files[query] = cache_file
             else:
                 logger.warning(f"No cache file found for query '{query}'")
     else:
-        # Find all `_current.json` files in the current directory
+        # Find all `_cache.json` files in the cache directory
         for file_name in os.listdir(cache_dir):
-            if file_name.endswith("_current.json"):
-                query_name = file_name.replace("_current.json", "")
+            if file_name.endswith("_cache.json"):
+                query_name = file_name.replace("_cache.json", "")
                 cache_files[query_name] = os.path.join(cache_dir, file_name)
 
     return cache_files
@@ -719,6 +715,8 @@ def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str
         html.append("      <h2>New Today</h2>")
         html.append("      <ul>")
         for query_name, art in new_today_articles:
+            if not isinstance(art, dict):
+                continue
             if art.get("status") == "exclude":
                 continue  # Skip excluded articles
             html.append(render_article_to_html(art, query_name=query_name, cfg=cfg))
@@ -736,10 +734,22 @@ def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str
         html.append(f"      <p><strong>Query:</strong> {query_string}</p>")
         html.append("      <ul>")
 
-        for art in articles:
-            if art.get("status") == "exclude":
-                continue  # Skip excluded articles
-            html.append(render_article_to_html(art, cfg=cfg))  # Use the helper function here
+        if isinstance(articles, dict):
+            for art_key, art_info in articles.items():
+                art = art_info.get("article_data", {})
+                if not isinstance(art, dict):
+                    continue
+                if art.get("status") == "exclude":
+                    continue
+                html.append(render_article_to_html(art, cfg=cfg))
+        else:
+            # If it's already a list of article dicts
+            for art in articles:
+                if not isinstance(art, dict):
+                    continue
+                if art.get("status") == "exclude":
+                    continue
+                html.append(render_article_to_html(art, cfg=cfg))
 
         html.append("      </ul>")
         # Add "Table of Contents" link at the end of the section
@@ -760,23 +770,15 @@ def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str
 def get_new_today_articles(results):
     """
     Get all articles marked as new today across all queries.
-
-    Parameters:
-    ----------
-    results : dict
-        Dictionary of query results
-
-    Returns:
-    --------
-    list
-        List of tuples containing (query_name, article) for new articles
     """
     new_today_articles = []
     for query_name, articles in results.items():
         for art in articles:
+            if not isinstance(art, dict):
+                continue
             if art.get("new_today", False):
                 if art.get("status") != "exclude":
-                    new_today_articles.append((query_name, art))  # Include the query name with each article
+                    new_today_articles.append((query_name, art))
     return new_today_articles
 
 def main():
