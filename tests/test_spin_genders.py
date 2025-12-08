@@ -1,9 +1,12 @@
 """
 Test the spin_genders function by reading input from a file or stdin and configuration from config.yaml.
 """
-import argparse
 import sys
 from pathlib import Path
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import argparse
 import yaml
 from ai_queries import spin_genders
 from ai_utils import AIUtils

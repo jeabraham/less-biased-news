@@ -6,11 +6,14 @@ against saved news articles to help fine-tune prompts for the chosen LLM.
 
 import os
 import sys
+from pathlib import Path
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import time
 import json
 import logging
 import argparse
-from pathlib import Path
 from typing import List, Dict
 import yaml
 

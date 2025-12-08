@@ -81,6 +81,58 @@ def find_query_files(queries=None, cache_dir="cache"):
     return cache_files
 
 
+def extract_articles_from_cache(cache_data):
+    """
+    Extract articles from cache data, handling both old and new cache formats.
+    
+    The new cache format is:
+    {
+        "articles": {
+            "article_key": {
+                "first_seen": "timestamp",
+                "article_data": {...}
+            }
+        }
+    }
+    
+    The old format was:
+    {
+        "articles": [...]
+    }
+    
+    Parameters:
+    ----------
+    cache_data : dict
+        The loaded cache data
+        
+    Returns:
+    --------
+    list
+        List of article dictionaries
+    """
+    articles_data = cache_data.get('articles', [])
+    
+    # Check if articles is a dict (new format) or list (old format)
+    if isinstance(articles_data, dict):
+        # New cache format: extract article_data from each entry
+        articles = []
+        for article_key, entry in articles_data.items():
+            if isinstance(entry, dict) and 'article_data' in entry:
+                # Validate that article_data is itself a dict
+                article_data = entry['article_data']
+                if isinstance(article_data, dict):
+                    articles.append(article_data)
+                else:
+                    logger.warning(f"Invalid article_data type for key: {article_key}, skipping")
+            else:
+                # Skip invalid entries instead of including them
+                logger.warning(f"Unexpected cache entry format for key: {article_key}, skipping")
+        return articles
+    else:
+        # Old format: articles is already a list
+        return articles_data if isinstance(articles_data, list) else []
+
+
 def generate_email_friendly_html(results: dict) -> str:
     """
     Generate email-friendly HTML for filtered news results, including a "New Today" section,
@@ -734,22 +786,13 @@ def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str
         html.append(f"      <p><strong>Query:</strong> {query_string}</p>")
         html.append("      <ul>")
 
-        if isinstance(articles, dict):
-            for art_key, art_info in articles.items():
-                art = art_info.get("article_data", {})
-                if not isinstance(art, dict):
-                    continue
-                if art.get("status") == "exclude":
-                    continue
-                html.append(render_article_to_html(art, cfg=cfg))
-        else:
-            # If it's already a list of article dicts
-            for art in articles:
-                if not isinstance(art, dict):
-                    continue
-                if art.get("status") == "exclude":
-                    continue
-                html.append(render_article_to_html(art, cfg=cfg))
+        # Process articles (should always be a list now due to extract_articles_from_cache)
+        for art in articles:
+            if not isinstance(art, dict):
+                continue
+            if art.get("status") == "exclude":
+                continue
+            html.append(render_article_to_html(art, cfg=cfg))
 
         html.append("      </ul>")
         # Add "Table of Contents" link at the end of the section
@@ -770,9 +813,24 @@ def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str
 def get_new_today_articles(results):
     """
     Get all articles marked as new today across all queries.
+    
+    Parameters:
+    ----------
+    results : dict
+        Dictionary where keys are query names and values are lists of article dicts
+        
+    Returns:
+    --------
+    list of tuple
+        List of (query_name, article) tuples for articles marked as new_today
     """
     new_today_articles = []
     for query_name, articles in results.items():
+        # articles should always be a list due to extract_articles_from_cache
+        if not isinstance(articles, list):
+            logger.warning(f"Expected list of articles for query '{query_name}', got {type(articles)}")
+            continue
+            
         for art in articles:
             if not isinstance(art, dict):
                 continue
@@ -827,7 +885,8 @@ def main():
         for query_name, file_path in query_files.items():
             data = load_json(file_path)
             if data:
-                articles = data.get('articles', [])
+                # Extract articles using the common helper function
+                articles = extract_articles_from_cache(data)
 
                 # Apply article limit if specified
                 if args.limit and args.limit > 0:

@@ -4,6 +4,11 @@ Integration test to demonstrate timing tracking in a realistic scenario.
 This simulates how timing would work when processing news articles.
 """
 
+import sys
+from pathlib import Path
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import os
 import time
 import tempfile

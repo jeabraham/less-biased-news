@@ -1,9 +1,13 @@
+import sys
+from pathlib import Path
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import os
 import time
 import json
 import logging
 import argparse
-from pathlib import Path
 from ai_utils import AIUtils
 from ai_queries import classify_leadership, short_summary, clean_summary, spin_genders, add_background_on_women, clean_article
 from article_fetcher import fetch_full_text_and_images
@@ -167,7 +171,10 @@ class TestCacheClassifications:
         openai_client = None
 
         if self.use_openai:
-            openai_pkg.api_key = cfg["openai"]["api_key"]
+            api_key = cfg.get("openai", {}).get("api_key", "")
+            if not api_key:
+                logger.warning("OpenAI API key not configured in config file")
+            openai_pkg.api_key = api_key
             openai_client = openai_pkg
 
         # Get list of prompts dynamically from config
