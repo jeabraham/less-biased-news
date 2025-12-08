@@ -399,8 +399,8 @@ def reject_classification(text: str, cfg: dict, ai_util, prompt_name: str) -> tu
                 task="rejection",
             )
         else:
-            logger.debug("Failed rejection classification: No LLM provider available")
-            return False, ""
+            logger.error("Failed rejection classification: No LLM provider available")
+            return False, "ERROR: No LLM provider available for rejection classification"
         
         # Check if the response starts with REJECT or ACCEPT
         result_upper = result.strip().upper()
