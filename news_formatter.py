@@ -440,7 +440,7 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
             status_metadata.append(f"[{status_display}]")
         if metadata_str:
             status_metadata.append(metadata_str)
-        html.append(f"  <div style='font-size: 0.85em; color: #666; margin-top: 4pt;'>{' | '.join(status_metadata)}</div>")
+        html.append(f"  <div style='font-size: 0.85em; color: #666; margin-top: 4pt; margin-bottom: 8pt'>{' | '.join(status_metadata)}</div>")
     
     # Include the most relevant image first (headline image)
     if article.get("most_relevant_image"):
@@ -468,7 +468,7 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
         for block in content.split("\n\n") for para in block.split("\n") if para.strip()
     ]
     for para in paragraphs:
-        html.append(f"  <p style='margin-bottom: 6pt;'>{para}</p>")
+        html.append(f"  <p style='margin-bottom: 4pt; margin-top: 4pt;'>{para}</p>")
 
     html.append("</li>")
     return "\n".join(html)
