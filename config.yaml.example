@@ -72,14 +72,14 @@ local_summarization:
     "model": "facebook/bart-large-cnn"
 
 # The number of images to get from the news source to look for women.
-max_images: 3
+max_images: 5
 
 # Image sizing configuration for HTML output
 image_sizes:
-  female_base: 400          # Base size for images with female faces
-  no_face_base: 200         # Base size for images with no faces
-  other_base: 150           # Base size for other images (male or low confidence)
-  leader_multiplier: 2      # Multiply image size by this for female_leader articles
+  female_base: 600          # Base size for images with female faces
+  no_face_base: 300         # Base size for images with no faces
+  other_base: 250           # Base size for other images (male or low confidence)
+  leader_multiplier: 1.5      # Multiply image size by this for female_leader articles
 
 # Control how female leadership is identified
 female_leadership_detection:
