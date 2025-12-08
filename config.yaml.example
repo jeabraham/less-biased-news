@@ -47,6 +47,7 @@ ollama:
   add_background_on_women_model: "llama3.1:8b-instruct-q4_K_M"
   classification_model: "llama3.1:8b-instruct-q4_K_M"
   spin_genders_model: "interstellarninja/hermes-2-pro-llama-3-8b:latest"
+  rejection_model: "qwen2.5:1.5b"
 
   # fallback models
   spin_genders_fallback: "dolphin3:latest"
@@ -227,6 +228,17 @@ prompts:
 
     ARTICLE:
 
+  reject_classification_prompt_1: >-
+    Determine whether this article should be accepted or rejected based on its content quality and relevance.
+
+    Return exactly one of the following as the FIRST word of the output:
+    ACCEPT
+    REJECT
+
+    After the first word, you may optionally add a brief explanation.
+
+    ARTICLE:
+
 # Global defaults
 default_summarize_selected: true   # apply clean_summary to all female_leader articles unless overridden
 
@@ -321,6 +333,7 @@ queries:
     classification: true
     languages: en
     sources: "-americanbankingnews"
+    rejection_prompt: reject_classification_prompt_1
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
     summarize_selected: true

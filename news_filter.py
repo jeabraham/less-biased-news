@@ -29,6 +29,7 @@ from ai_queries import (
     spin_genders,
     add_background_on_women,
     clean_article,
+    reject_classification,
 )
 from news_formatter import generate_text, generate_html
 from timing_tracker import get_timing_tracker
@@ -620,6 +621,24 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
     # We'll clean the article when we're sure we need it cleaned
     #body = clean_article(art["body"], cfg, aiclient)
     body = art["body"]
+    
+    # Check if rejection prompt is specified for this query
+    rejection_prompt = qcfg.get("rejection_prompt")
+    if rejection_prompt:
+        logger.info(f"Checking article '{art.get('title', 'Unknown')}' for rejection using prompt: {rejection_prompt}")
+        is_rejected, rejection_response = reject_classification(body, cfg, aiclient, rejection_prompt)
+        
+        if is_rejected:
+            logger.info(f"Article REJECTED: {art.get('title', 'Unknown')}")
+            logger.info(f"Rejection response: {rejection_response}")
+            # Mark article as rejected and set status to exclude
+            art["status"] = "rejected"
+            art["rejection_response"] = rejection_response
+            art["content"] = ""
+            return  # Skip further processing
+        else:
+            logger.info(f"Article ACCEPTED: {art.get('title', 'Unknown')}")
+    
     doc = nlp(body)
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
