@@ -390,28 +390,31 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
     published = article.get("published_at", article.get("publishedAt", ""))
     
     # Format the date if available
+    # Note: NewsAPI and MediaStack return ISO 8601 formatted dates (e.g., '2024-01-15T10:30:00Z')
     date_str = ""
     if published:
         try:
-            # Handle common date formats
-            # Replace 'Z' with '+00:00' for ISO format compatibility
+            # Handle ISO 8601 date formats
+            # Replace 'Z' with '+00:00' for fromisoformat() compatibility (Python 3.7+)
             date_to_parse = published
-            if published.endswith('Z'):
+            if isinstance(published, str) and published.endswith('Z'):
                 date_to_parse = published.replace('Z', '+00:00')
             
             dt = datetime.fromisoformat(date_to_parse)
             date_str = dt.strftime("%b %d, %Y")
         except (ValueError, TypeError, AttributeError):
-            # If parsing fails, try to extract just the date part if it looks like YYYY-MM-DD
+            # Fallback: Try to extract just the date part from ISO 8601 format
             try:
                 if isinstance(published, str) and len(published) >= 10:
-                    date_part = published[:10]  # Extract YYYY-MM-DD
+                    # Assumes ISO 8601 format where first 10 chars are YYYY-MM-DD
+                    date_part = published[:10]
                     dt = datetime.strptime(date_part, "%Y-%m-%d")
                     date_str = dt.strftime("%b %d, %Y")
                 else:
+                    # If date is very short, just use it as-is (truncated)
                     date_str = str(published)[:10] if published else ""
             except (ValueError, TypeError):
-                # Last resort: use the raw string (truncated if too long)
+                # Last resort: Display truncated raw string for debugging
                 date_str = str(published)[:20] if published else ""
     
     # Build metadata string
@@ -661,7 +664,7 @@ def generate_html(results: dict, metadata: dict = None, cfg: dict = None) -> str
         "      ul { list-style-type: disc; margin-left: 20px; }",
         "      hr { border: 0; height: 1px; background: #ccc; margin: 20px 0; }",
         "      .toc { margin-bottom: 20px; }",
-        "      img { float: right; margin: 0 0 1em 1em; max-width: 300px; }",
+        "      img { float: right; margin: 0 0 1em 1em; }",
         "      p, li { overflow: auto; }",
         "      .toc-link { margin-top: 20px; display: block; font-size: 0.9em; }",
         "    </style>",
