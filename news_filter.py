@@ -366,7 +366,15 @@ def save_cache(file_path: str, data: dict):
     new_articles = data.get("articles", [])
     for article in new_articles:
         article_key = get_article_key(article)
-        
+
+        # Ensure we persist female-leader fields
+        if article.get("status") == "female_leader":
+            article["is_female_leader"] = True
+            # leader_name may be None if not identified
+        else:
+            # Keep explicit False unless already True
+            article.setdefault("is_female_leader", False)
+
         # Only add if not already in cache (preserves first_seen timestamp)
         if article_key not in existing_cache["articles"]:
             existing_cache["articles"][article_key] = {
@@ -375,7 +383,17 @@ def save_cache(file_path: str, data: dict):
             }
         else:
             # Update article data but keep original first_seen timestamp
-            existing_cache["articles"][article_key]["article_data"] = article
+            # Merge to avoid dropping existing leader info if newly missing
+            cached_art = existing_cache["articles"][article_key]["article_data"]
+            merged = dict(cached_art)
+            merged.update(article)
+            # If cached had leader_name and new one is missing, keep cached
+            if "leader_name" in cached_art and not merged.get("leader_name"):
+                merged["leader_name"] = cached_art["leader_name"]
+            # If either indicates female leader, keep True
+            if cached_art.get("is_female_leader") or merged.get("status") == "female_leader":
+                merged["is_female_leader"] = True
+            existing_cache["articles"][article_key]["article_data"] = merged
     
     # Save merged cache
     with open(file_path, "w", encoding="utf-8") as file:
@@ -588,6 +606,9 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                         art["most_relevant_status"] = cached_art.get("most_relevant_status", "no_face")
                         art["most_relevant_image"] = cached_art.get("most_relevant_image", None)
                         art["image_analysis"] = cached_art.get("image_analysis", {})
+                        # Preserve female leader classification and leader name from cache
+                        art["leader_name"] = cached_art.get("leader_name", None)
+                        art["is_female_leader"] = cached_art.get("is_female_leader", art.get("status") == "female_leader")
                 logger.debug(f"{'New Title ->' if is_new else 'NOT New Title ->'} {art['title']}")
             else:
                 categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
@@ -961,7 +982,7 @@ def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text"
          use_cache: bool = False, new_today: bool = False, expire_days: int = None):
     setup_logging(log_level)
     cfg = load_config(config_path)
-    
+
     try:
         res = fetch_and_filter(cfg, use_cache, new_today, expire_days)  # Pass flags to fetch_and_filter
 
