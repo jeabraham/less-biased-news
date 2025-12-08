@@ -3,6 +3,11 @@
 Test the timing tracker functionality.
 """
 
+import sys
+from pathlib import Path
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import os
 import time
 import tempfile

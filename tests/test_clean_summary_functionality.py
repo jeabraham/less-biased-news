@@ -10,11 +10,12 @@ Tests that:
 
 import sys
 import os
+from pathlib import Path
 import yaml
 import unittest
 
-# Add the current directory to sys.path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class TestCleanSummaryFunctionality(unittest.TestCase):

@@ -1,9 +1,13 @@
+import sys
+from pathlib import Path
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import os
 import time
 import json
 import logging
 import argparse
-from pathlib import Path
 from ai_utils import AIUtils
 from ai_queries import classify_leadership, short_summary, clean_summary, spin_genders, add_background_on_women, clean_article
 from article_fetcher import fetch_full_text_and_images

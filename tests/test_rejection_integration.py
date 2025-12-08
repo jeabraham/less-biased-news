@@ -4,6 +4,11 @@ Integration test for the rejection prompt feature.
 Tests that the feature integrates correctly with the news_filter module.
 """
 
+import sys
+from pathlib import Path
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import logging
 import yaml
 
