@@ -617,7 +617,9 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
 def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclient, nlp, gender_map, stats,
                                    summarize_selected = True):
-    body = clean_article(art["body"], cfg, aiclient)
+    # We'll clean the article when we're sure we need it cleaned
+    #body = clean_article(art["body"], cfg, aiclient)
+    body = art["body"]
     doc = nlp(body)
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
@@ -639,33 +641,36 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         else:
             art["status"] = qcfg["fallback"]
 
+    # Process all images to classify them for HTML display (even if we don't use fallback_image_female)
+    process_article_images(art, image_list)
+    
     # Handle article processing based on classification
     if art["status"] == "female_leader":
-        # Let's look for a good picture of a woman
-        process_article_images(art, image_list)
         # If the article is classified as about a female leader, handle content summarization
+        cleaned = clean_article(body, cfg, aiclient)
         if summarize_selected:
             logger.info(f"Clean-summarizing '{art['title']}'")
-            art["content"] = clean_summary(body, cfg, aiclient, leader_name=art.get("leader_name"))
+            art["content"] = clean_summary(cleaned, cfg, aiclient, leader_name=art.get("leader_name"))
         else:
             # Keep the full fetched body
-            art["content"] = body
+            art["content"] = cleaned
     else:
-        # Let's check if the first image contains a woman.
-        process_article_images(art, image_list[:1])
-        # Handle fallback logic for image statuses
+        # Handle fallback logic for image statuses (check if first image contains a woman)
         img_stat = art.get("most_relevant_status", "")
         if img_stat in ("female", "female_majority", "female_prominent"):
             art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
             logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")
         if art["status"] == "show_full":
-            art["content"] = clean_summary(body, cfg, aiclient) if summarize_selected else body
+            cleaned = clean_article(body, cfg, aiclient)
+            art["content"] = clean_summary(cleaned, cfg, aiclient, leader_name="women in general") if summarize_selected else cleaned
         elif art["status"] == "short_summary":
             # Generate a short summary
-            art["content"] = short_summary(body, cfg, aiclient)
+            cleaned = clean_article(body, cfg, aiclient)
+            art["content"] = short_summary(cleaned, cfg, aiclient)
         elif art["status"] == "spin_genders":
             # Apply gender-spin logic
-            art["content"] = spin_genders(body, cfg, aiclient)
+            cleaned = clean_article(body, cfg, aiclient)
+            art["content"] = spin_genders(cleaned, cfg, aiclient)
         else:
             # Default to the article's description, but this article will usually be excluded anyways.
             art["content"] = art.get("description", "")
@@ -963,7 +968,7 @@ def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text"
         # Extract metadata (query strings) for HTML generation
         metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
         if fmt == "html":
-            out = generate_html(res, metadata)
+            out = generate_html(res, metadata, cfg=cfg)
         else:  # Use plain text formatter for other formats
             out = generate_text(res, metadata)
 

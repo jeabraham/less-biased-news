@@ -41,7 +41,7 @@ ollama:
   base_url: "http://localhost:11434"  # Default Ollama API endpoint
   model: "llama3.1:8b-instruct-q4_K_M"  # Default model if task-specific model not specified
   # Task-specific models
-  clean_article_model: "llama3.1:8b-instruct-q4_K_M"
+  clean_article_model: "qwen2.5:1.5b"
   short_summary_model: "llama3.1:8b-instruct-q4_K_M"
   clean_summary_model: "llama3.1:8b-instruct-q4_K_M"  # or llama3.1:8b
   add_background_on_women_model: "llama3.1:8b-instruct-q4_K_M"
@@ -72,6 +72,13 @@ local_summarization:
 
 # The number of images to get from the news source to look for women.
 max_images: 3
+
+# Image sizing configuration for HTML output
+image_sizes:
+  female_base: 400          # Base size for images with female faces
+  no_face_base: 200         # Base size for images with no faces
+  other_base: 150           # Base size for other images (male or low confidence)
+  leader_multiplier: 2      # Multiply image size by this for female_leader articles
 
 # Control how female leadership is identified
 female_leadership_detection:
@@ -211,7 +218,7 @@ prompts:
        - Produce a concise, factual summary under 500 words.
 
     General rules:
-    • Emphasize the contributions of women when they appear.
+    • Emphasize the contributions of women when they appear, especially <leader_name>.
     • Do not add new facts or interpretations.
     • Do not fabricate quotes or names.
     • Do not add commentary, headings, or markdown.
