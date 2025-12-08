@@ -24,7 +24,7 @@ This project addresses the tendency for news sources to focus on male leaders an
 This module processes news articles in several stages:
 
 1. **Article Fetching**  
-   `newsdata_fetcher.py` retrieves articles from configured providers (NewsAPI, MediaStack) based on your `config.yaml` queries.
+   `news_filter.py` retrieves articles from configured providers (NewsAPI, MediaStack) based on your `config.yaml` queries.
 
 2. **Content Extraction**  
    `article_fetcher.py` uses Newspaper3k, Readability, and BeautifulSoup to extract the full text and lead image from each article.
@@ -36,10 +36,11 @@ This module processes news articles in several stages:
    `analyze_image_gender.py` uses DeepFace (with facenet-pytorch and OpenCV) to detect faces in article images and classify gender (configurable confidence threshold).
 
 5. **OpenAI Summarization & Filtering**  
-   `openai_utils.py` sends selected articles to OpenAI (GPT-3.5+/GPT-4) to ask if a women is portrayed in a leadership role.  Open AI is also used to generate summaries (long summaries of articles featuring women leaders, or short summaries of articles that don't), and can “spin” the article to focus more on the women.  These options are controlled and defined in `config.yaml`.
+   `ai_queries.py` sends selected articles to AI (OpenAI GPT or Ollama) to determine if a woman is portrayed in a leadership role. AI is also used to generate summaries (long summaries of articles featuring women leaders, or short summaries of articles that don't), and can "spin" the article to focus more on the women. These options are controlled and defined in `config.yaml`.
 
 6. **Output Generation**  
-   `news_filter.py` orchestrates the pipeline and writes HTML or plain-text output.
+   `news_formatter.py` generates HTML, text, or email-formatted output from the filtered articles.  
+   `news_filter.py` orchestrates the entire pipeline.
 
 ## Prerequisites
 
