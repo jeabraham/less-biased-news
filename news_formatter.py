@@ -133,6 +133,7 @@ def extract_articles_from_cache(cache_data):
         return articles_data if isinstance(articles_data, list) else []
 
 
+@deprecated
 def generate_email_friendly_html(results: dict) -> str:
     """
     Generate email-friendly HTML for filtered news results, including a "New Today" section,
@@ -191,7 +192,7 @@ def generate_email_friendly_html(results: dict) -> str:
         email_html.append("<h2 id='new_today' style='color: #cc0000;'>New Today</h2>")
         email_html.append("<ul>")
         for query_name, article in new_today_articles:
-            email_html.append(render_article_to_email(article, query_name=query_name))
+            email_html.append(render_article_to_html_email(article, query_name=query_name))
         email_html.append("</ul>")
         email_html.append("<div class='back-to-toc'><a href='#'>Back to Table of Contents</a></div>")
 
@@ -207,7 +208,7 @@ def generate_email_friendly_html(results: dict) -> str:
         email_html.append(f"<h2 id='{query_name}' style='color: #0066cc;'>{query_name}</h2>")
         email_html.append("<ul>")
         for article in filtered_articles:
-            email_html.append(render_article_to_email(article, query_name=query_name))
+            email_html.append(render_article_to_html_email(article, query_name=query_name))
         email_html.append("</ul>")
         email_html.append("<div class='back-to-toc'><a href='#'>Back to Table of Contents</a></div>")
 
@@ -577,8 +578,8 @@ def get_image_size_and_url(article, image_url=None, cfg=None):
 
     return final, image_url
 
-
-def render_article_to_email(article: dict, query_name: str = None) -> str:
+@deprecated
+def render_article_to_html_email(article: dict, query_name: str = None) -> str:
     """
     Render an article in email-compatible HTML with dynamic image sizing.
 
