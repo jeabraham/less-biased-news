@@ -19,6 +19,7 @@ Usage examples:
 """
 
 import argparse
+import copy
 import logging
 import os
 import sys
@@ -486,7 +487,6 @@ Examples:
                 logger.info(f"{'*'*80}\n")
                 
                 # Create a copy of the article for this pipeline to avoid interference
-                import copy
                 article_copy = copy.deepcopy(article)
                 
                 process_article_with_pipeline(
