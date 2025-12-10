@@ -25,6 +25,19 @@ The script uses the same dependencies as the main `news_filter.py` application. 
 2. All dependencies from `requirements.txt` installed
 3. A valid `config.yaml` file with your API keys and settings
 
+## Prerequisites
+
+Before running the test pipeline, you need cached articles to process. You can obtain them by:
+
+1. **Running the main application**: Execute `news_filter.py` to fetch and cache articles:
+   ```bash
+   python news_filter.py --config config.yaml
+   ```
+
+2. **Creating test data manually**: Create JSON files in the `cache/` directory following the cache format (see "Cache File Format" section below).
+
+**Note**: The `cache/` directory is gitignored by default, so you won't find pre-populated cache files in the repository. You must generate cache files yourself before using the test pipeline tool.
+
 ## Usage
 
 ### Basic Syntax
