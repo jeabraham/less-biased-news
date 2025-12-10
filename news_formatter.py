@@ -3,6 +3,32 @@ import json
 import argparse
 from datetime import datetime
 import textwrap
+from datetime import datetime
+import html
+# Add this lightweight decorator to avoid NameError and emit a warning
+import warnings
+
+
+def deprecated(func):
+    """
+    Simple deprecation decorator that warns on first call.
+    """
+    warned = {"done": False}
+
+    def wrapper(*args, **kwargs):
+        if not warned["done"]:
+            warnings.warn(f"{func.__name__} is deprecated and may be removed in a future release.",
+                          DeprecationWarning, stacklevel=2)
+            warned["done"] = True
+        return func(*args, **kwargs)
+
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    wrapper.__dict__.update(func.__dict__)
+    return wrapper
+
+
+import logging
 
 # Constants for image status classification
 FEMALE_IMAGE_STATUSES = ("female", "female_majority", "female_prominent")

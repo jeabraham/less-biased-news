@@ -636,6 +636,39 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
     return results
 
+def check_boolean(cfg: dict, name: str, default: bool = False) -> bool:
+    """
+    Interpret a configuration value as boolean.
+
+    - Accepts actual booleans from YAML (True/False).
+    - Accepts common string forms: "true"/"yes"/"1" => True, "false"/"no"/"0" => False (case-insensitive).
+    - If key not present, returns default.
+    - If value type is unexpected, falls back to bool(value).
+
+    name can be a key or a dotted path (e.g., "female_leadership_detection.use_local_checks").
+    """
+    def get_by_path(d, path):
+        cur = d
+        for part in path.split("."):
+            if not isinstance(cur, dict) or part not in cur:
+                return None
+            cur = cur[part]
+        return cur
+
+    raw = get_by_path(cfg, name)
+    if raw is None:
+        return bool(default)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return raw != 0
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if s in {"true", "yes", "y", "on", "1"}:
+            return True
+        if s in {"false", "no", "n", "off", "0"}:
+            return False
+    return bool(raw)
 
 def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclient, nlp, gender_map, stats,
                                    summarize_selected = True):
@@ -662,7 +695,7 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
     doc = nlp(body)
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
-    if qcfg.get("classification", "True") in ("True", "true", "yes"):
+    if check_boolean(qcfg, "classification", True):
         is_female_leader, leader_name = identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient)
     else:
         is_female_leader, leader_name = False, None
@@ -756,7 +789,7 @@ def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
     )
     
     if female_names:
-        stats["female_names"] += 1
+        stats["female_names"] += female_names.__len__()
     if has_kw:
         stats["keyword_hits"] += 1
     
