@@ -812,64 +812,85 @@ def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
 def process_article_images(art, image_list):
     """
     Process a list of images associated with an article and determine the overall image status.
-
-    Args:
-        art (dict): The article dictionary where the results will be stored.
-        image_list (list): A list of image URLs to process.
-
-    Returns:
-        None
     """
     art["image_urls"] = image_list
     art["most_relevant_status"] = "no_face"
     art["most_relevant_image"] = None
-    art["image_analysis"] = {}  # Store prominence information for all images
+    art["image_analysis"] = {}
 
-    # Define valid statuses and their implicit priority
     valid_statuses = ["female", "female_majority", "female_prominent"]
-    default_priority = len(valid_statuses)  # Use a high index for unexpected statuses
+    default_priority = len(valid_statuses)
+
+    logger.info(f"[ImagePipeline] Processing {len(image_list)} images for article: {art.get('title','(untitled)')}")
 
     for image_url in image_list:
-        faces, dimensions = analyze_image_gender(image_url)
-        if (faces and len(faces) > 0):
-            image_status, prominence_score = female_faces(faces)  # Fetch details about the image
+        logger.info(f"[ImagePipeline] → Analyzing: {image_url}")
+
+        try:
+            faces, dimensions = analyze_image_gender(image_url)
+        except Exception as e:
+            logger.error(f"[ImagePipeline] DeepFace error on {image_url}: {e}", exc_info=True)
+            faces, dimensions = [], None
+
+        logger.info(f"[ImagePipeline]   Faces detected: {faces}")
+
+        if faces and len(faces) > 0:
+            # LOG each face in detail
+            for idx, f in enumerate(faces):
+                logger.info(
+                    f"[ImagePipeline]   Face {idx}: gender={f.get('gender')} "
+                    f"raw_scores={f.get('raw_scores')} "
+                    f"confidence={f.get('confidence')} "
+                    f"prominence={f.get('prominence')}"
+                )
+
+            image_status, prominence_score = female_faces(faces)
+            logger.info(f"[ImagePipeline]   → female_faces() returned: {image_status}, prominence={prominence_score}")
+
         else:
+            logger.info("[ImagePipeline]   → No faces returned")
             image_status = "no_face"
             prominence_score = 0
 
-        # Store analysis details for the image
         art["image_analysis"][image_url] = {
             "status": image_status,
             "prominence_score": prominence_score,
+            "raw_faces": faces,
         }
 
-        # Determine the current image's priority
         current_priority = (
-            valid_statuses.index(image_status) if image_status in valid_statuses else default_priority
+            valid_statuses.index(image_status)
+            if image_status in valid_statuses
+            else default_priority
         )
 
-        # Update the article's "most relevant" image based on priority and prominence score
+        # First image auto-selected
         if not art["most_relevant_image"]:
-            # If no image selected yet, choose the current one
+            logger.info(f"[ImagePipeline]   Selecting as initial best image")
             art["most_relevant_status"] = image_status
             art["most_relevant_image"] = image_url
             highest_priority = current_priority
             highest_prominence = prominence_score
-        else:
-            # Check if the current image is more relevant
-            if (
-                    current_priority < highest_priority  # Higher-priority status
-                    or (current_priority == highest_priority and prominence_score > highest_prominence)
-                    # Tie-breaking by prominence
-            ):
-                art["most_relevant_status"] = image_status
-                art["most_relevant_image"] = image_url
-                highest_priority = current_priority
-                highest_prominence = prominence_score
+            continue
 
-    # Fallback if no relevant image is found
+        # Compare priority
+        if (
+            current_priority < highest_priority or
+            (current_priority == highest_priority and prominence_score > highest_prominence)
+        ):
+            logger.info(
+                f"[ImagePipeline]   Replacing previous best: "
+                f"{art['most_relevant_image']} (status={art['most_relevant_status']}) "
+                f"→ {image_url} (status={image_status})"
+            )
+            art["most_relevant_status"] = image_status
+            art["most_relevant_image"] = image_url
+            highest_priority = current_priority
+            highest_prominence = prominence_score
+
     if not art.get("most_relevant_image") and image_list:
         art["most_relevant_image"] = image_list[0]
+        logger.info(f"[ImagePipeline] Fallback: selected first image: {image_list[0]}")
 
 def fetch_newsapi(cfg, name, qcfg, newsapi):
     desired = qcfg.get("page_size", 100)
