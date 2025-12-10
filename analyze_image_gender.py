@@ -1,182 +1,154 @@
-# analyze_image_gender.py
-
-import logging, time, requests
-import numpy as np
+import argparse
+import json
+import logging
 from io import BytesIO
-from PIL import Image, UnidentifiedImageError
+from pathlib import Path
+from typing import Any, Dict, List, Union
+
+import numpy as np
+import requests
+from PIL import Image
 from deepface import DeepFace
-from facenet_pytorch import MTCNN
-import torch
-import cv2
-from timing_tracker import get_timing_tracker
 
 logger = logging.getLogger(__name__)
 
 FEMALE_CONFIDENCE_THRESHOLD = 0.6
 MIN_FACE_WIDTH_RATIO       = 0.05
 
-# Initialize MTCNN once
-device = "cuda" if torch.cuda.is_available() else "cpu"
-mtcnn  = MTCNN(keep_all=True, device=device, thresholds=[0.6,0.7,0.7])
+from typing import Union
+ImageSource = Union[str, Path, np.ndarray]
 
-import requests
-from requests.exceptions import RequestException
-from urllib.parse import urlparse
+def _load_image(source: ImageSource) -> np.ndarray:
+    """Load an image from path / URL / numpy array and return an RGB numpy array.
 
-def download_image(url: str, timeout: int = 5) -> bytes | None:
+    This mirrors the way tests call DeepFace: they pass a numpy RGB array
+    created from a PIL image.
     """
-    Try downloading `url` with a browser-like User-Agent and Referer.
-    Returns the raw bytes on success, or None on any error.
+
+    # Already a numpy array
+    if isinstance(source, np.ndarray):
+        arr = source
+        # Ensure 3 channels
+        if arr.ndim == 2:  # grayscale -> RGB
+            arr = np.stack([arr] * 3, axis=-1)
+        elif arr.ndim == 3 and arr.shape[2] == 4:  # RGBA -> RGB
+            arr = arr[:, :, :3]
+        return arr
+
+    # Path or URL
+    if isinstance(source, (str, Path)):
+        src = str(source)
+        if src.startswith("http://") or src.startswith("https://"):
+            logger.info("[ImageGender] Downloading image from URL: %s", src)
+            resp = requests.get(src, timeout=20)
+            resp.raise_for_status()
+            img = Image.open(BytesIO(resp.content)).convert("RGB")
+        else:
+            path = Path(src)
+            logger.info("[ImageGender] Loading image from file: %s", path)
+            img = Image.open(path).convert("RGB")
+
+        return np.array(img)
+
+    raise TypeError(f"Unsupported image source type: {type(source)!r}")
+
+
+def _run_deepface_gender(np_img: np.ndarray) -> List[Dict[str, Any]]:
+    """Run DeepFace.analyze for gender on the full image.
+
+    This is intentionally the same call pattern as in tests:
+    - Pass a numpy RGB array
+    - actions=["gender"]
+    - enforce_detection=False
+    We rely on DeepFace's own face detection and region handling.
     """
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1 Safari/605.1.15"
-        ),
-        # Some CDNs require a Referer header matching the page that embedded the image:
-        "Referer": f"{urlparse(url).scheme}://{urlparse(url).netloc}/",
-        "Accept": "image/avif,image/webp,image/apng,*/*;q=0.8"
-    }
+
+    logger.info("[ImageGender] Calling DeepFace.analyze(actions=['gender'], enforce_detection=False)")
+
+    result = DeepFace.analyze(
+        np_img,
+        actions=["gender"],
+        enforce_detection=False,
+    )
+
+    # DeepFace sometimes returns a dict for a single face, or a list for multiple.
+    if isinstance(result, dict):
+        return [result]
+    return list(result)
+
+
+def analyze_image_gender(source: ImageSource):
+    """High-level API used by the rest of the project.
+
+    Returns a tuple: (faces, (width, height))
+    """
+
+    np_img = _load_image(source)
+    height, width = np_img.shape[:2]
+
     try:
-        resp = requests.get(url, headers=headers, timeout=timeout)
-        resp.raise_for_status()
-        return resp.content
-    except RequestException as e:
-        logger.warning(f"[ImageGender] Download/Open failed for {url}: {e}")
-        return None
+        faces = _run_deepface_gender(np_img)
+    except Exception as e:  # noqa: BLE001 - we want to log and bubble up
+        logger.warning("[ImageGender] DeepFace failed: %s", e)
+        raise
 
-def load_image(data: bytes):
-    """
-    Try loading `data` first with PIL, then with OpenCV if PIL fails.
-    Returns a RGB PIL Image on success, or None on failure.
-    """
-    # --- PIL attempt ---
-    try:
-        return Image.open(BytesIO(data)).convert("RGB")
-    except UnidentifiedImageError as e:
-        logger.debug(f"[ImageGender] PIL failed to identify image: {e}")
-    except Exception as e:
-        logger.warning(f"[ImageGender] Unexpected PIL error: {e}")
+    processed_faces: List[Dict[str, Any]] = []
 
-    # --- OpenCV fallback ---
-    try:
-        arr = np.frombuffer(data, dtype=np.uint8)
-        cv_img = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # BGR
-        if cv_img is None:
-            raise ValueError("cv2.imdecode returned None")
-        # convert BGR → RGB and to PIL
-        rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
-        return Image.fromarray(rgb)
-    except Exception as e:
-        logger.warning(f"[ImageGender] OpenCV fallback failed: {e}")
-        return None
+    for f in faces:
+        gender_scores = f.get("gender") or {}
+        dominant_gender = f.get("dominant_gender")
+        dominant_score = None
+        if dominant_gender and isinstance(gender_scores, dict):
+            dominant_score = gender_scores.get(dominant_gender)
 
-def analyze_image_gender(image_url: str):
-    """
-    Download an image, detect faces using MTCNN, and classify each detected face's gender using DeepFace.
-
-    This method performs the following steps:
-    1. Downloads the image from the given URL.
-    2. Detects faces in the image using MTCNN.
-    3. For each detected face, classifies the gender (Male/Woman) using the DeepFace library.
-    4. Calculates a prominence score for each face based on its relative size in the image.
-
-    Parameters:
-    ----------
-    image_url : str
-        The URL of the image to analyze.
-
-    Returns:
-    --------
-    tuple:
-        - A list of detected faces (or None if no faces are detected).
-        - A tuple containing the image dimensions (width, height) or None if unavailable.
-    """
-    tracker = get_timing_tracker()
-    with tracker.time_task("image_analysis"):
-        logger.info(f"[ImageGender] Starting analysis for {image_url}")
-
-        try:
-            # 1) Download and load the image
-            data = download_image(image_url, timeout=5)
-            if not data:
-                return None, None  # Return with no faces and dimensions if download fails
-            img_pil = load_image(data)
-            if img_pil is None:
-                logger.info(f"[ImageGender] Unable to parse image, skipping: {image_url}")
-                return None, None
-
-            img_np = np.array(img_pil)
-            H, W, _ = img_np.shape  # Extract image dimensions
-            logger.debug(f"[ImageGender] Downloaded image (W={W}, H={H})")
-        except Exception as e:
-            logger.warning(f"[ImageGender] Download/Open failed: {e}")
-            return None, None
-
-        try:
-            # 2) Face detection with MTCNN
-            boxes, _ = mtcnn.detect(img_pil)
-        except Exception as e:
-            logger.warning(f"[ImageGender] Face detection error: {e}")
-            return None, (W, H)
-
-        # Handle zero faces
-        if boxes is None or len(boxes) == 0:
-            logger.info(f"[ImageGender] No faces detected")
-            return None, (W, H)
-
-        logger.debug(f"[ImageGender] MTCNN found {len(boxes)} face(s)")
-
-        faces = []
-        for i, box in enumerate(boxes):
-            x1, y1, x2, y2 = [int(b) for b in box]
-            w, h = x2 - x1, y2 - y1
-
-            # Ignore faces that are too small
-            if w < W * MIN_FACE_WIDTH_RATIO:
-                logger.debug(f"[ImageGender] Dropped tiny face {i}: w={w}px")
-                continue
-
-            face_crop = img_np[y1:y2, x1:x2]
-            try:
-                od = DeepFace.analyze(
-                    face_crop,
-                    actions=["gender"],
-                    enforce_detection=False,
-                    detector_backend="mtcnn"
-                )
-            except Exception as e:
-                logger.warning(f"[ImageGender] DeepFace failed on face {i}: {e}")
-                continue
-
-            rec = od if isinstance(od, dict) else od[0]
-            raw = rec.get("gender", {})
-            man_score = raw.get("Man", 0.0)
-            woman_score = raw.get("Woman", 0.0)
-            total = man_score + woman_score
-
-            if total > 0:
-                if woman_score > man_score:
-                    gender = "Woman"
-                    confidence = woman_score / total
-                else:
-                    gender = "Man"
-                    confidence = man_score / total
-            else:
-                gender = rec.get("dominant_gender", "Unknown")
-                confidence = rec.get("gender_confidence", 0.0)
-
-            prominence = (w * h) / (W * H) if (W * H) else 0.0
-
-            face_rec = {
-                "region": (x1, y1, w, h),
-                "raw_scores": {"Man": man_score, "Woman": woman_score},
-                "gender": gender,
-                "confidence": confidence,
-                "prominence": prominence
+        region = f.get("region") or {}
+        processed_faces.append(
+            {
+                "dominant_gender": dominant_gender,
+                "dominant_gender_score": dominant_score,
+                "gender_scores": gender_scores,
+                "face_confidence": f.get("face_confidence"),
+                "region": {
+                    "x": region.get("x"),
+                    "y": region.get("y"),
+                    "w": region.get("w"),
+                    "h": region.get("h"),
+                },
             }
-            logger.debug(f"[ImageGender] Face {i}: {face_rec}")
-            faces.append(face_rec)
+        )
 
-        logger.info(f"[ImageGender] Analysis complete: {len(faces)} valid face(s)")
-        return faces, (W, H)
+    return processed_faces, (width, height)
+
+
+def main(argv: List[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Analyze image gender using DeepFace.")
+    parser.add_argument("image", help="Image path or URL")
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Logging level",
+    )
+
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    logger.info("[ImageGender] Starting analysis for %s", args.image)
+
+    faces, (width, height) = analyze_image_gender(args.image)
+    result = {
+        "faces": faces,
+        "dimensions": {
+            "width": width,
+            "height": height,
+        },
+    }
+    print(json.dumps(result, indent=2, default=float))
+
+
+if __name__ == "__main__":
+    main()
