@@ -2,6 +2,11 @@
 """
 Standalone test for the replace_male_pronouns_with_neutral function.
 This test can be run without installing the full project dependencies.
+
+Note: This file intentionally duplicates the replace_male_pronouns_with_neutral
+function from news_filter.py to allow standalone testing without requiring the
+installation of spacy and other heavy dependencies. This makes it easy to verify
+the pronoun replacement logic in isolation.
 """
 
 import re
