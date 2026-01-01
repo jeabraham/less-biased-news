@@ -443,22 +443,33 @@ def replace_male_pronouns_with_neutral(text):
     Replace masculine pronouns with gender-neutral ones,
     preserving capitalization automatically and distinguishing
     'his' determiner vs. 'his' possessive pronoun.
+    
+    The logic:
+    - "his" followed by adverbs at end/before punctuation → "theirs" (possessive pronoun)
+    - "his" followed by a word → "their" (determiner)
+    - "his" at end or before punctuation → "theirs" (possessive pronoun)
     """
 
     if not isinstance(text, str):
         raise ValueError("The input argument 'text' must be a string.")
 
-    # Order matters: standalone HIS must come before determiner his
+    # Order matters: we need to handle 'his' carefully to distinguish determiner vs. possessive pronoun
     replacements = [
         # himself
         (r"\bhimself\b", "themself"),
 
-        # standalone 'his' → theirs (possessive pronoun)
-        # lookahead ensures end of string or non-word character
-        (r"\bhis\b(?=[^\w]|$)", "theirs"),
+        # 'his' before common adverbs that typically come at END (followed by punctuation or end of string)
+        # This handles cases like "his too." or "his alone," or "his also!"
+        (r"\bhis\b(?=\s+(?:too|alone|also|as well|entirely|exclusively|only)(?:\s*[,;.!?]|\s*$))", "theirs"),
 
-        # 'his' determiner → their
-        (r"\bhis\b", "their"),
+        # 'his' determiner (followed by space and then a word) → their
+        # This pattern matches "his" when it's followed by whitespace and then a word character
+        # This will catch most cases like "his book", "his lifelong dream", "his only wish", etc.
+        (r"\bhis\b(?=\s+\w)", "their"),
+
+        # standalone 'his' → theirs (possessive pronoun)
+        # This catches everything else: end of string, before punctuation, etc.
+        (r"\bhis\b", "theirs"),
 
         # him → them
         (r"\bhim\b", "them"),
