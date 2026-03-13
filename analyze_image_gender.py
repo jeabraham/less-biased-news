@@ -1,6 +1,9 @@
 import argparse
 import json
 import logging
+import os
+import subprocess
+import sys
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Union
@@ -10,7 +13,6 @@ import requests
 from PIL import Image
 
 # before importing deepface turn off debugging problem
-# import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # optional
 # os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 # os.environ["KERAS_BACKEND"] = "tensorflow"
@@ -19,15 +21,17 @@ from PIL import Image
 # import tensorflow as tf
 # tf.config.run_functions_eagerly(True)
 
+# Environment variable used to prevent recursive subprocess spawning.
+# When set, analyze_image_gender() calls DeepFace directly instead of
+# delegating to a subprocess.
+_WORKER_ENV_KEY = "_DEEPFACE_WORKER"
 
-from deepface import DeepFace
-
-logger = logging.getLogger(__name__)
+# Timeout (seconds) for the DeepFace worker subprocess.
+_SUBPROCESS_TIMEOUT = 120
 
 FEMALE_CONFIDENCE_THRESHOLD = 0.6
 MIN_FACE_WIDTH_RATIO       = 0.05
 
-from typing import Union
 ImageSource = Union[str, Path, np.ndarray]
 
 
@@ -69,6 +73,7 @@ def _load_image(source: ImageSource) -> np.ndarray:
 # -----------------------------
 def _run_deepface_gender(np_img: np.ndarray) -> List[Dict[str, Any]]:
     """Run DeepFace.analyze exactly like the working tests."""
+    from deepface import DeepFace  # imported late to avoid top-level TF init
 
     logger.info("[ImageGender] Calling DeepFace.analyze(actions=['gender'], enforce_detection=False)")
 
@@ -85,10 +90,88 @@ def _run_deepface_gender(np_img: np.ndarray) -> List[Dict[str, Any]]:
 
 
 # -----------------------------
+# Subprocess isolation wrapper
+# -----------------------------
+def _analyze_via_subprocess(source_str: str):
+    """
+    Run DeepFace analysis in a fully isolated child process.
+
+    DeepFace/TensorFlow can cause a segmentation fault (SIGSEGV) that kills
+    the entire Python process and cannot be caught with try/except.  By
+    delegating the work to a subprocess we ensure that a crash only terminates
+    the child; the parent receives a non-zero exit code and can return a safe
+    fallback value instead of dying.
+    """
+    # Derive the effective log level name for the child process.
+    effective_level = logging.getLevelName(logger.getEffectiveLevel())
+    cmd = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        source_str,
+        "--log-level", effective_level,
+    ]
+    # Set the worker flag so the child calls DeepFace directly.
+    env = {**os.environ, _WORKER_ENV_KEY: "1"}
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_SUBPROCESS_TIMEOUT,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("[ImageGender] Subprocess timed out for %s", source_str)
+        return None, None
+    except Exception as exc:
+        logger.warning("[ImageGender] Subprocess launch error: %s", exc)
+        return None, None
+
+    if proc.returncode != 0:
+        # A negative exit code means the process was killed by a signal
+        # (e.g. -11 == SIGSEGV).  A positive non-zero code indicates a
+        # handled error inside the child.
+        logger.warning(
+            "[ImageGender] Subprocess exited with code %d for %s",
+            proc.returncode,
+            source_str,
+        )
+        if proc.stderr:
+            logger.debug("[ImageGender] Subprocess stderr: %s", proc.stderr[:500])
+        return None, None
+
+    try:
+        data = json.loads(proc.stdout)
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.warning("[ImageGender] Could not parse subprocess output: %s", exc)
+        return None, None
+
+    faces = data.get("faces")
+    dims = data.get("dimensions") or {}
+    w = dims.get("width")
+    h = dims.get("height")
+    dimensions = (w, h) if w is not None and h is not None else None
+    return faces, dimensions
+
+
+# -----------------------------
 # Main analysis wrapper
 # -----------------------------
 def analyze_image_gender(source: ImageSource):
-    """Return (faces, (width, height)) or (None, None) on failure."""
+    """Return (faces, (width, height)) or (None, None) on failure.
+
+    When *source* is a URL or file path and we are not already running inside
+    a worker subprocess, the analysis is delegated to an isolated child
+    process.  This prevents a segmentation fault inside DeepFace/TensorFlow
+    from killing the caller's process.
+    """
+
+    # Delegate to subprocess for URL/path sources to isolate segfaults.
+    # Skip when we are already the worker (avoid infinite recursion) or
+    # when the caller passed a numpy array (can't be serialised cheaply).
+    if not os.environ.get(_WORKER_ENV_KEY) and isinstance(source, (str, Path)):
+        return _analyze_via_subprocess(str(source))
 
     try:
         np_img = _load_image(source)
