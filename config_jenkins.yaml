@@ -230,6 +230,7 @@ prompts:
     3. It is promotional, repetitive, SEO spam, or low-information content (e.g., casino promos, miracle cures).
     4. It is dismissive, degrading, or hostile toward women or girls.
     5. It minimizes women's importance by celebrating stereotypes without presenting them positively.
+    6. If the article is inconsistent with this title: "{title}"
 
     If none of the above apply, return ACCEPT.
 
@@ -348,6 +349,7 @@ queries:
     classification: true
     fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
     fallback_image_female: short_summary     # if a woman's face is prominent
+    rejection_prompt: reject_classification_prompt_1
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
