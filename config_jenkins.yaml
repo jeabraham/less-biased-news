@@ -83,7 +83,7 @@ prompts:
     - subscription prompts
     - paywall text
     - navigation lists
-    - â€œrelated storiesâ€ or â€œstory continues belowâ€
+    - 'related stories' or 'story continues below'
     - promotional blocks
     - social media prompts
     - newsletter signups
@@ -147,7 +147,7 @@ prompts:
     7. Preserve all full names of women exactly as written.
     8. Preserve all quotes spoken by women exactly.
     9. You may replace non-essential male names with neutral roles such as
-       â€œa spokesperson,â€ â€œa city official,â€ or â€œa representative.â€
+       'a spokesperson', 'a city official' or 'a representative'.
     10. If a male name is required for factual accuracy, leave it unchanged.
     11. Do NOT alter male pronouns. They will be handled later.
     12. Keep the length and structure similar to the original.
@@ -204,12 +204,12 @@ prompts:
        - Produce a concise, factual summary under 500 words.
 
     General rules:
-    â€¢ Emphasize the contributions of women when they appear, especially <leader_name>.
-    â€¢ Do not add new facts or interpretations.
-    â€¢ Do not fabricate quotes or names.
-    â€¢ Do not add commentary, headings, or markdown.
-    â€¢ Final output must be under 500 words.
-    â€¢ Begin the output with the first word of the rewritten article.
+    * Emphasize the contributions of women when they appear, especially <leader_name>.
+    * Do not add new facts or interpretations.
+    * Do not fabricate quotes or names.
+    * Do not add commentary, headings, or markdown.
+    * Final output must be under 500 words.
+    * Begin the output with the first word of the rewritten article.
 
     ARTICLE:
 
@@ -226,10 +226,11 @@ prompts:
     Reject the article ONLY if at least one of these conditions is true:
 
     1. It is an advertisement for a product, service, or brand.
-    2. It is primarily about stock markets, investments, trading, crypto, or financial signals.
+    2. It is primarily about stock markets, an investment, trading, crypto, or financial signals.
     3. It is promotional, repetitive, SEO spam, or low-information content (e.g., casino promos, miracle cures).
     4. It is dismissive, degrading, or hostile toward women or girls.
-    5. It minimizes womenâ€™s importance by celebrating stereotypes without presenting them positively.
+    5. It minimizes women's importance by celebrating stereotypes without presenting them positively.
+    6. If the article is inconsistent with this title: "{title}"
 
     If none of the above apply, return ACCEPT.
 
@@ -301,7 +302,7 @@ leadership_keywords:
   - mediator
 
 # Define as many queries as you like:
-#   - `q`: your NewsAPI query (supports quoted phrases, +/â€“ prefixes, AND/OR/NOT)
+#   - `q`: your NewsAPI query (supports quoted phrases, prefixes, AND/OR/NOT)
 #   - `classification`: whether to apply the female-leadership filter
 #   - `fallback`: what to do with non-female-leadership articles
 #       * show_full: include original
@@ -334,7 +335,7 @@ queries:
     fallback_women: spin_genders # If a woman is mentioned in the article, use this fallback
     rejection_prompt: reject_classification_prompt_1
     summarize_selected: true
-    fallback_image_female: short_summary     # if a womanâ€™s face is prominent
+    fallback_image_female: short_summary     # if a woman's face is prominent
     male_initials: true
     remove_male_pronouns: true
 #    countries: ca doesn't work
@@ -347,7 +348,8 @@ queries:
     history_days: 5       # override default: grab the last 14 days
     classification: true
     fallback: exclude  # Options: show_full, short_summary, spin_genders, exclude
-    fallback_image_female: short_summary     # if a womanâ€™s face is prominent
+    fallback_image_female: short_summary     # if a woman's face is prominent
+    rejection_prompt: reject_classification_prompt_1
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
@@ -358,7 +360,7 @@ queries:
     page_size: 20
     classification: true
     fallback: spin_genders  # Options: show_full, short_summary, spin_genders, exclude
-    fallback_image_female: spin_genders     # if a womanâ€™s face is prominent
+    fallback_image_female: spin_genders     # if a woman's face is prominent
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
@@ -370,7 +372,7 @@ queries:
     classification: true
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders
-    fallback_image_female: show_full     # if a womanâ€™s face is prominent
+    fallback_image_female: show_full     # if a woman's face is prominent
     summarize_selected: true
     male_initials: true
     remove_male_pronouns: true
@@ -382,12 +384,12 @@ queries:
     classification: true
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders
-    fallback_image_female: show_full     # if a womanâ€™s face is prominent
+    fallback_image_female: show_full     # if a woman's face is prominent
     summarize_selected: true
     male_initials: false
     remove_male_pronouns: false
 
-  - name: Womenâ€™s Empowerment
+  - name: Women's Empowerment
     provider: newsapi
     q: '("women leadership" OR "female leadership" OR "female CEO" OR "women empowerment")'
     #mfor mediastack q: '"women leadership", "female leadership", "female CEO", "women empowerment"'
@@ -395,7 +397,7 @@ queries:
     classification: true
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: show_full
-    fallback_image_female: show_full     # if a womanâ€™s face is prominent
+    fallback_image_female: show_full     # if a woman's face is prominent
     summarize_selected: false
     male_initials: true
     remove_male_pronouns: true
@@ -408,12 +410,12 @@ queries:
     classification: false
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders
-    fallback_image_female: spin_genders     # if a womanâ€™s face is prominent
+    fallback_image_female: spin_genders     # if a woman's face is prominent
     summarize_selected: false
     male_initials: true
     remove_male_pronouns: true
 
-  - name: Womenâ€™s Fitness
+  - name: Women's Fitness
     provider: newsapi
     q: '((women OR female) AND (fitness OR workout OR wellness OR "strength training" OR Pilates)) OR ((women OR female) AND (beauty OR skincare OR fashion OR style OR appearance)) OR ("women social life" OR "women friendships" OR "female networking")'
     #for mediastack q: 'women, female, fitness, workout, wellness, "strength training", Pilates, beauty, skincare, fashion, style, appearance, "women social life", "women friendships", "female networking"'
@@ -421,7 +423,7 @@ queries:
     classification: false
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders
-    fallback_image_female: spin_genders     # if a womanâ€™s face is prominent
+    fallback_image_female: spin_genders     # if a woman's face is prominent
     summarize_selected: false
     male_initials: true
     remove_male_pronouns: true
@@ -433,7 +435,7 @@ queries:
     classification: false
     fallback: short_summary  # Options: show_full, short_summary, spin_genders, exclude
     fallback_women: spin_genders
-    fallback_image_female: spin_genders     # if a womanâ€™s face is prominent
+    fallback_image_female: spin_genders     # if a woman's face is prominent
     summarize_selected: false
     male_initials: true
     remove_male_pronouns: true
@@ -445,7 +447,7 @@ queries:
     classification: false
     fallback: exclude
     fallback_women: spin_genders
-    fallback_image_female: spin_genders     # if a womanâ€™s face is prominent
+    fallback_image_female: spin_genders     # if a woman's face is prominent
     summarize_selected: false
     male_initials: true
     remove_male_pronouns: true

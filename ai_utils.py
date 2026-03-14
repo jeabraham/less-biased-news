@@ -4,6 +4,7 @@ import tiktoken
 
 os.environ["USE_TENSOR_PARALLEL"] = "0"
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -268,12 +269,17 @@ class AIUtils:
             if temperature is None:
                 temperature = self.ollama_cfg.get("temperature", 0.1)
 
-            logger.info(f"Calling Ollama API with model: {model_name}")
+            logger.info(
+                f"Calling Ollama API with model: {model_name}, "
+                f"prompt_length: {len(prompt)}, stream: False, think: False"
+            )
 
             # Call Ollama API (client was initialized with custom host in __init__)
             response = self.ollama_client.generate(
                 model=model_name,
                 prompt=prompt,
+                stream=False,
+                think=False,
                 options={
                     "temperature": temperature,
                     "num_predict": max_tokens,
@@ -282,7 +288,15 @@ class AIUtils:
 
             result = response.get("response", "").strip()
             if not result:
-                logger.warning("Ollama returned an empty response")
+                try:
+                    raw_body = json.dumps(dict(response))
+                except Exception:
+                    raw_body = repr(response)
+                logger.warning(
+                    "Ollama returned an empty response (model: %s, prompt_length: %d, "
+                    "stream: False, think: False, raw_body: %s)",
+                    model_name, len(prompt), raw_body,
+                )
             logger.debug(f"Ollama result length: {len(result)} chars")
             return result
         

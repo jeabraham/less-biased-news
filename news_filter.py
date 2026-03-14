@@ -691,7 +691,7 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
     rejection_prompt = qcfg.get("rejection_prompt")
     if rejection_prompt:
         logger.info(f"Checking article '{art.get('title', 'Unknown')}' for rejection using prompt: {rejection_prompt}")
-        is_rejected, rejection_response = reject_classification(body, cfg, aiclient, rejection_prompt)
+        is_rejected, rejection_response = reject_classification(body, cfg, aiclient, rejection_prompt, title=art.get('title'))
         
         if is_rejected:
             logger.info(f"Article REJECTED: {art.get('title', 'Unknown')}")

@@ -349,33 +349,38 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
         return is_leader, leader_name
 
 
-def reject_classification(text: str, cfg: dict, ai_util, prompt_name: str) -> tuple[bool, str]:
+def reject_classification(text: str, cfg: dict, ai_util, prompt_name: str, title: str = None) -> tuple[bool, str]:
     """
     Classify text to determine if it should be rejected, using the rejection_model.
-    
+
     Args:
         text: The article text to classify
         cfg: Configuration dictionary
         ai_util: Instance of AIUtils for inference
         prompt_name: The name of the rejection prompt to use from config
-    
+        title: Optional title of the article to check for content match
+
     Returns:
         tuple: (is_rejected: bool, response: str) where response contains the full model output
     """
     tracker = get_timing_tracker()
-    
+
     # Get the rejection model name for logging/tracking
     rejection_model = _get_model_name(cfg, "rejection")
-    
+
     with tracker.time_task("reject_classification", rejection_model):
         logger.debug(f"Running rejection classification with prompt: {prompt_name}")
-        
+
         # Get the prompt from config
         prompt = cfg["prompts"].get(prompt_name)
         if not prompt:
             logger.error(f"Rejection prompt '{prompt_name}' not found in config")
             return False, ""
-        
+
+        # If title is provided, replace placeholder in prompt
+        if title:
+            prompt = prompt.replace("{title}", title)
+
         # Prioritize: Ollama > Local AI > OpenAI
         if ai_util.ollama_enabled:
             logger.debug(f"Using Ollama rejection model: {rejection_model}")
@@ -401,13 +406,13 @@ def reject_classification(text: str, cfg: dict, ai_util, prompt_name: str) -> tu
         else:
             logger.error("Failed rejection classification: No LLM provider available")
             return False, "ERROR: No LLM provider available for rejection classification"
-        
+
         # Check if the response starts with REJECT or ACCEPT
         result_upper = result.strip().upper()
         is_rejected = result_upper.startswith("REJECT")
-        
+
         logger.debug(f"Rejection classification result: {result[:100]}...")
-        
+
         return is_rejected, result
 
 
