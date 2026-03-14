@@ -29,6 +29,8 @@ _WORKER_ENV_KEY = "_DEEPFACE_WORKER"
 # Timeout (seconds) for the DeepFace worker subprocess.
 _SUBPROCESS_TIMEOUT = 120
 
+logger = logging.getLogger(__name__)
+
 FEMALE_CONFIDENCE_THRESHOLD = 0.6
 MIN_FACE_WIDTH_RATIO       = 0.05
 
