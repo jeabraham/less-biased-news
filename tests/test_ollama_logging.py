@@ -4,8 +4,9 @@ Unit tests for _call_ollama_api() in AIUtils.
 
 Covers:
 - stream=False is passed to ollama_client.generate()
-- model name and prompt length are included in the INFO log line
-- empty response triggers a WARNING that includes model, prompt_length, stream, and raw_body
+- think=False is passed to ollama_client.generate()
+- model name, prompt length, stream: False, think: False are in the INFO log line
+- empty response triggers a WARNING that includes model, prompt_length, stream, think, and raw_body
 - non-empty response produces no WARNING
 """
 
@@ -70,7 +71,7 @@ def _make_ai_utils(response_text: str = "yes") -> tuple:
 
 
 class TestCallOllamaApiStreamFalse(unittest.TestCase):
-    """stream=False must be forwarded to ollama_client.generate()."""
+    """stream=False and think=False must be forwarded to ollama_client.generate()."""
 
     def test_stream_false_passed(self):
         utils, mock_client = _make_ai_utils("hello")
@@ -79,9 +80,16 @@ class TestCallOllamaApiStreamFalse(unittest.TestCase):
         self.assertIn("stream", kwargs, "stream keyword must be explicitly passed")
         self.assertEqual(kwargs["stream"], False, "stream must be False")
 
+    def test_think_false_passed(self):
+        utils, mock_client = _make_ai_utils("hello")
+        utils._call_ollama_api("test prompt")
+        _, kwargs = mock_client.generate.call_args
+        self.assertIn("think", kwargs, "think keyword must be explicitly passed")
+        self.assertEqual(kwargs["think"], False, "think must be False")
+
 
 class TestCallOllamaApiInfoLog(unittest.TestCase):
-    """INFO log must contain model name, prompt_length, and stream: False."""
+    """INFO log must contain model name, prompt_length, stream: False, and think: False."""
 
     def test_info_log_contains_expected_fields(self):
         utils, _ = _make_ai_utils("some result")
@@ -95,10 +103,11 @@ class TestCallOllamaApiInfoLog(unittest.TestCase):
         self.assertIn("test-model", log_line)
         self.assertIn(str(len(prompt)), log_line)
         self.assertIn("stream: False", log_line)
+        self.assertIn("think: False", log_line)
 
 
 class TestCallOllamaApiEmptyResponseWarning(unittest.TestCase):
-    """Empty response must emit a WARNING containing model, prompt_length, stream, raw_body."""
+    """Empty response must emit a WARNING containing model, prompt_length, stream, think, raw_body."""
 
     def test_warning_on_empty_response(self):
         utils, _ = _make_ai_utils("")
@@ -114,6 +123,7 @@ class TestCallOllamaApiEmptyResponseWarning(unittest.TestCase):
         self.assertIn("test-model", warn)
         self.assertIn(str(len(prompt)), warn)
         self.assertIn("stream: False", warn)
+        self.assertIn("think: False", warn)
         self.assertIn("raw_body", warn)
 
     def test_no_warning_on_non_empty_response(self):

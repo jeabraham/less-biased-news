@@ -271,7 +271,7 @@ class AIUtils:
 
             logger.info(
                 f"Calling Ollama API with model: {model_name}, "
-                f"prompt_length: {len(prompt)}, stream: False"
+                f"prompt_length: {len(prompt)}, stream: False, think: False"
             )
 
             # Call Ollama API (client was initialized with custom host in __init__)
@@ -279,6 +279,7 @@ class AIUtils:
                 model=model_name,
                 prompt=prompt,
                 stream=False,
+                think=False,
                 options={
                     "temperature": temperature,
                     "num_predict": max_tokens,
@@ -293,7 +294,7 @@ class AIUtils:
                     raw_body = repr(response)
                 logger.warning(
                     "Ollama returned an empty response (model: %s, prompt_length: %d, "
-                    "stream: False, raw_body: %s)",
+                    "stream: False, think: False, raw_body: %s)",
                     model_name, len(prompt), raw_body,
                 )
             logger.debug(f"Ollama result length: {len(result)} chars")
