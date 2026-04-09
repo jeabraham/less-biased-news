@@ -18,6 +18,7 @@ This project addresses the tendency for news sources to focus on male leaders an
 **Documentation:**
 - See [OLLAMA_SETUP.md](OLLAMA_SETUP.md) for detailed Ollama installation, configuration, troubleshooting, and model selection
 - See [MAKEFILE.md](MAKEFILE.md) for Ubuntu Makefile usage, targets, and advanced configuration
+- See [TEST_PIPELINE.md](TEST_PIPELINE.md) for testing article processing pipelines on cached articles
 
 ## Overview
 
@@ -146,6 +147,33 @@ Run manually:
 ```bash
 python news_filter.py   --config config.yaml   --format html   --output news_$(date +%Y-%m-%d).html   --log INFO
 ```
+
+### Testing Pipelines on Cached Articles
+
+The `test_pipeline.py` tool allows you to test different processing sequences on cached articles without fetching new ones:
+
+```bash
+# Test a single pipeline on all cached articles
+python test_pipeline.py -p "categorize, spin_genders, clean_summary"
+
+# Test multiple pipelines on specific queries with formatted output
+python test_pipeline.py --queries "tech news" "politics" \
+    -p "categorize, spin_genders, clean_summary" \
+    -p "image_classification, categorize, short_summary" \
+    --format-text
+
+# Process only recent articles
+python test_pipeline.py --newer-than "2024-12-01" \
+    -p "categorize, clean_summary"
+```
+
+This is useful for:
+- Testing different processing sequences without API costs
+- Debugging pipeline configurations
+- Validating AI model behavior on specific articles
+- Experimenting with different combinations of steps
+
+See [TEST_PIPELINE.md](TEST_PIPELINE.md) for detailed documentation.
 
 ### New Features: Improved Cache Management
 
