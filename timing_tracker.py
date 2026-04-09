@@ -232,12 +232,12 @@ class TimingTracker:
                         f.write(self._format_timing_line(task, duration, count))
 
                     # Error summary
-                    f.write(f"\nERROR SUMMARY:\n")
+                    f.write("\nERROR SUMMARY:\n")
                     if self.error_counts:
                         for category in sorted(self.error_counts.keys()):
                             f.write(f"  {category}: {self.error_counts[category]}\n")
                     else:
-                        f.write(f"  (no errors recorded)\n")
+                        f.write("  (no errors recorded)\n")
 
                     f.write(f"{'='*80}\n\n")
             except Exception as e:
