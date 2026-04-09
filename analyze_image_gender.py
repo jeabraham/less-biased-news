@@ -12,6 +12,8 @@ import numpy as np
 import requests
 from PIL import Image
 
+from timing_tracker import get_timing_tracker
+
 # before importing deepface turn off debugging problem
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # optional
 # os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -125,9 +127,11 @@ def _analyze_via_subprocess(source_str: str):
         )
     except subprocess.TimeoutExpired:
         logger.warning("[ImageGender] Subprocess timed out for %s", source_str)
+        get_timing_tracker().record_error("deepface_subprocess_timeout")
         return None, None
     except Exception as exc:
         logger.warning("[ImageGender] Subprocess launch error: %s", exc)
+        get_timing_tracker().record_error("deepface_subprocess_launch_error")
         return None, None
 
     if proc.returncode != 0:
@@ -141,12 +145,14 @@ def _analyze_via_subprocess(source_str: str):
         )
         if proc.stderr:
             logger.debug("[ImageGender] Subprocess stderr: %s", proc.stderr[:500])
+        get_timing_tracker().record_error("deepface_subprocess_crash")
         return None, None
 
     try:
         data = json.loads(proc.stdout)
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("[ImageGender] Could not parse subprocess output: %s", exc)
+        get_timing_tracker().record_error("deepface_subprocess_bad_output")
         return None, None
 
     faces = data.get("faces")
@@ -179,6 +185,7 @@ def analyze_image_gender(source: ImageSource):
         np_img = _load_image(source)
     except Exception as e:
         logger.warning("[ImageGender] Image load failed: %s", e)
+        get_timing_tracker().record_error("image_load_error")
         return None, None
 
     height, width = np_img.shape[:2]
@@ -187,6 +194,7 @@ def analyze_image_gender(source: ImageSource):
         faces_raw = _run_deepface_gender(np_img)
     except Exception as e:
         logger.warning("[ImageGender] DeepFace failed: %s", e)
+        get_timing_tracker().record_error("deepface_analyze_error")
         return None, (width, height)
 
     # Log how many faces were detected

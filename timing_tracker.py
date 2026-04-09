@@ -47,7 +47,10 @@ class TimingTracker:
         # Track last periodic log time
         self.last_periodic_log = time.time()
         self.periodic_interval = 600  # 10 minutes in seconds
-        
+
+        # Error counts by category
+        self.error_counts: Dict[str, int] = {}
+
         # Initialize the timing log file
         self._initialize_log_file()
     
@@ -88,6 +91,17 @@ class TimingTracker:
                 self.current_article_timings[task_key] = \
                     self.current_article_timings.get(task_key, 0) + elapsed
     
+    def record_error(self, category: str):
+        """
+        Increment the error count for the given category.
+
+        Args:
+            category: Short label for the type of error
+                      (e.g. 'deepface_subprocess_crash', 'llm_classification_error').
+        """
+        with self.lock:
+            self.error_counts[category] = self.error_counts.get(category, 0) + 1
+
     def log_article_timing(self, article_title: str, query_name: str):
         """
         Log timing for the current article and accumulate to query and total timings.
@@ -205,7 +219,7 @@ class TimingTracker:
             logger.error(f"Failed to write periodic log: {e}")
     
     def finalize(self):
-        """Write final accumulated timings and close the log."""
+        """Write final accumulated timings and error summary, then close the log."""
         with self.lock:
             try:
                 with open(self.log_file, 'a', encoding='utf-8') as f:
@@ -216,6 +230,15 @@ class TimingTracker:
                         duration = self.total_timings[task]
                         count = self.total_counts.get(task, 0)
                         f.write(self._format_timing_line(task, duration, count))
+
+                    # Error summary
+                    f.write(f"\nERROR SUMMARY:\n")
+                    if self.error_counts:
+                        for category in sorted(self.error_counts.keys()):
+                            f.write(f"  {category}: {self.error_counts[category]}\n")
+                    else:
+                        f.write(f"  (no errors recorded)\n")
+
                     f.write(f"{'='*80}\n\n")
             except Exception as e:
                 logger.error(f"Failed to write final summary: {e}")
