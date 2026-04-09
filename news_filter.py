@@ -756,7 +756,12 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
             art["content"] = spin_genders(cleaned, cfg, aiclient)
         else:
             # Default to the article's description, but this article will usually be excluded anyways.
-            art["content"] = art.get("description", "")
+            art["content"] = art.get("description") or ""
+    # Ensure content is always a string before post-processing (AI functions or None description may produce non-str)
+    if not isinstance(art.get("content"), str):
+        logger.warning(f"Article content is not a string (got {type(art.get('content')).__name__}), defaulting to empty string")
+        get_timing_tracker().record_error("content_not_string")
+        art["content"] = ""
     if qcfg.get("remove_male_pronouns", False):
         art["content"] = replace_male_pronouns_with_neutral(art["content"])
     if qcfg.get("male_initials", False):
