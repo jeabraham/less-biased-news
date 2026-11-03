@@ -96,7 +96,7 @@ def _run_deepface_gender(np_img: np.ndarray) -> List[Dict[str, Any]]:
 # -----------------------------
 # Subprocess isolation wrapper
 # -----------------------------
-def _analyze_via_subprocess(source_str: str):
+def _analyze_via_subprocess(source_str: str, diagnostics: dict | None = None):
     """
     Run DeepFace analysis in a fully isolated child process.
 
@@ -127,10 +127,14 @@ def _analyze_via_subprocess(source_str: str):
         )
     except subprocess.TimeoutExpired:
         logger.warning("[ImageGender] Subprocess timed out for %s", source_str)
+        if diagnostics is not None:
+            diagnostics.update(stage="subprocess", error=f"Image worker timed out after {_SUBPROCESS_TIMEOUT} seconds")
         get_timing_tracker().record_error("deepface_subprocess_timeout")
         return None, None
     except Exception as exc:
         logger.warning("[ImageGender] Subprocess launch error: %s", exc)
+        if diagnostics is not None:
+            diagnostics.update(stage="subprocess", error=str(exc))
         get_timing_tracker().record_error("deepface_subprocess_launch_error")
         return None, None
 
@@ -145,6 +149,9 @@ def _analyze_via_subprocess(source_str: str):
         )
         if proc.stderr:
             logger.debug("[ImageGender] Subprocess stderr: %s", proc.stderr[:500])
+        if diagnostics is not None:
+            diagnostics.update(stage="subprocess", error=f"Image worker exited with code {proc.returncode}",
+                               stderr=proc.stderr)
         get_timing_tracker().record_error("deepface_subprocess_crash")
         return None, None
 
@@ -153,8 +160,19 @@ def _analyze_via_subprocess(source_str: str):
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("[ImageGender] Could not parse subprocess output: %s", exc)
         get_timing_tracker().record_error("deepface_subprocess_bad_output")
+        if diagnostics is not None:
+            diagnostics.update(stage="subprocess_output", error=str(exc))
         return None, None
 
+    worker_diagnostics = data.get("diagnostics") or {}
+    if diagnostics is not None:
+        diagnostics.update(worker_diagnostics)
+    if worker_diagnostics.get("error"):
+        logger.warning("[ImageGender] Worker failed at %s for %s: %s",
+                       worker_diagnostics.get("stage"), source_str, worker_diagnostics["error"])
+        get_timing_tracker().record_error(
+            "image_load_error" if worker_diagnostics.get("stage") == "image_load" else "deepface_analyze_error"
+        )
     faces = data.get("faces")
     dims = data.get("dimensions") or {}
     w = dims.get("width")
@@ -166,8 +184,11 @@ def _analyze_via_subprocess(source_str: str):
 # -----------------------------
 # Main analysis wrapper
 # -----------------------------
-def analyze_image_gender(source: ImageSource):
+def analyze_image_gender(source: ImageSource, diagnostics: dict | None = None):
     """Return (faces, (width, height)) or (None, None) on failure.
+
+    Optional diagnostics receive the failure stage and original exception text,
+    including errors reported by the isolated worker.
 
     When *source* is a URL or file path and we are not already running inside
     a worker subprocess, the analysis is delegated to an isolated child
@@ -179,12 +200,16 @@ def analyze_image_gender(source: ImageSource):
     # Skip when we are already the worker (avoid infinite recursion) or
     # when the caller passed a numpy array (can't be serialised cheaply).
     if not os.environ.get(_WORKER_ENV_KEY) and isinstance(source, (str, Path)):
-        return _analyze_via_subprocess(str(source))
+        if diagnostics is None:
+            return _analyze_via_subprocess(str(source))
+        return _analyze_via_subprocess(str(source), diagnostics=diagnostics)
 
     try:
         np_img = _load_image(source)
     except Exception as e:
         logger.warning("[ImageGender] Image load failed: %s", e)
+        if diagnostics is not None:
+            diagnostics.update(stage="image_load", error=f"{type(e).__name__}: {e}")
         get_timing_tracker().record_error("image_load_error")
         return None, None
 
@@ -194,6 +219,8 @@ def analyze_image_gender(source: ImageSource):
         faces_raw = _run_deepface_gender(np_img)
     except Exception as e:
         logger.warning("[ImageGender] DeepFace failed: %s", e)
+        if diagnostics is not None:
+            diagnostics.update(stage="face_analysis", error=f"{type(e).__name__}: {e}")
         get_timing_tracker().record_error("deepface_analyze_error")
         return None, (width, height)
 
@@ -272,12 +299,14 @@ def main(argv: List[str] | None = None):
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    faces, dims = analyze_image_gender(args.image)
+    diagnostics = {}
+    faces, dims = analyze_image_gender(args.image, diagnostics=diagnostics)
     width, height = dims if dims else (None, None)
 
     out = {
         "faces": faces,
         "dimensions": {"width": width, "height": height},
+        "diagnostics": diagnostics,
     }
 
     print(json.dumps(out, indent=2))

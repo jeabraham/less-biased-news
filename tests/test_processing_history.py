@@ -161,6 +161,18 @@ class ProcessingHistoryTests(unittest.TestCase):
         self.process(["failed"])
         self.assertIn("failed", self.art["image_analysis"]["failed"]["error"])
 
+    def test_worker_download_error_is_saved_in_story_history(self):
+        def analyze(url, diagnostics):
+            diagnostics.update(stage="image_load", error="ConnectionError: Failed to resolve 'i.cbc.ca'")
+            return None, None
+        self.pipeline.analyze_image_gender.side_effect = analyze
+        steps = self.process(["cbc-image"])
+        analysis = self.art["image_analysis"]["cbc-image"]
+        self.assertEqual(analysis["diagnostics"]["stage"], "image_load")
+        self.assertIn("Failed to resolve", analysis["error"])
+        selection = next(s for s in steps if s["name"] == "Image analysis and selection")
+        self.assertEqual(selection["details"]["images"]["cbc-image"]["error"], analysis["error"])
+
     def test_extraction_history_and_provider_fallback(self):
         def fetch(url, max_images, diagnostics):
             diagnostics["attempts"] = [{"method": "extractor", "error": "fetch failed"}]

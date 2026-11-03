@@ -948,10 +948,11 @@ def process_article_images(art, image_list):
         logger.info(f"[ImagePipeline] → Analyzing: {image_url}")
 
         error = None
+        diagnostics = {}
         try:
-            faces, dimensions = analyze_image_gender(image_url)
+            faces, dimensions = analyze_image_gender(image_url, diagnostics=diagnostics)
             if faces is None:
-                error = "Image analysis failed; no usable result returned by image analyzer"
+                error = diagnostics.get("error") or "Image analysis failed; no usable result returned by image analyzer"
         except Exception as e:
             logger.error(f"[ImagePipeline] DeepFace error on {image_url}: {e}", exc_info=True)
             get_timing_tracker().record_error("image_pipeline_exception")
@@ -984,6 +985,7 @@ def process_article_images(art, image_list):
             "raw_faces": faces,
             "dimensions": dimensions,
             "error": error,
+            "diagnostics": diagnostics,
         }
 
         current_priority = (
