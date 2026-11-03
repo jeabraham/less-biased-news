@@ -5,6 +5,8 @@ from datetime import datetime
 import textwrap
 from datetime import datetime
 import html
+from html import escape as html_escape
+from processing_history import write_processing_pages, record_step, history_scope
 # Add this lightweight decorator to avoid NameError and emit a warning
 import warnings
 
@@ -512,7 +514,10 @@ def render_article_to_html(article: dict, query_name: str = None, cfg: dict = No
     if status_display or metadata_str:
         status_metadata = []
         if status_display:
-            status_metadata.append(f"[{status_display}]")
+            status_label = f"[{html_escape(status_display)}]"
+            if article.get("processing_page") and article.get("processing_history"):
+                status_label = f"<a href='{html_escape(article['processing_page'])}'>{status_label}</a>"
+            status_metadata.append(status_label)
         if metadata_str:
             status_metadata.append(metadata_str)
         html.append(f"  <div style='font-size: 0.85em; color: #666; margin-top: 4pt; margin-bottom: 8pt'>{' | '.join(status_metadata)}</div>")
@@ -940,15 +945,22 @@ def main():
                         max_length = min(100, max(30, input_length // 2))
 
                         article['original_content'] = content
-                        article['content'] = summarize_text_using_local_model(
-                            content,
-                            max_length=max_length,
-                            min_length=min(30, max_length - 10)
-                        )
+                        with history_scope(article):
+                            article['content'] = summarize_text_using_local_model(
+                                content,
+                                max_length=max_length,
+                                min_length=min(30, max_length - 10)
+                            )
+                        record_step(article, "Formatter summarization", {
+                            "max_length": max_length, "min_length": min(30, max_length - 10),
+                        }, before=content, after=article['content'])
         except ImportError:
             logger.warning("Summarization requested but summarization module not available")
 
     # Generate output based on format
+    if args.output:
+        write_processing_pages(results, os.path.dirname(os.path.abspath(args.output)),
+                               preserve_cached=not args.summarize)
     if args.format == 'email':
         output = generate_text(results, metadata, for_email=True)
     elif args.format == 'text':

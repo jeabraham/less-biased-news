@@ -43,6 +43,37 @@ This module processes news articles in several stages:
    `news_formatter.py` generates HTML, text, or email-formatted output from the filtered articles.  
    `news_filter.py` orchestrates the entire pipeline.
 
+### Story processing histories
+
+File output now writes `story-<article_id>.html` beside the summary. In web
+summaries, the existing status label (such as `[spin_genders]`, `[female_leader]`,
+or `[short_summary]`) links to that story's processing page.
+
+The page includes the original provider data and URL, retrieved text, extraction
+attempts, candidate images (including those omitted by `max_images`), detected
+people, classification gates and query fallbacks, and image scores, confidence
+thresholds, selection and display-sizing decisions. Each text operation has
+input/output text, a highlighted diff, and word/character counts showing whether
+it shortened or lengthened the story. Model requests, responses, truncation and
+errors are recorded when applicable. Gender predictions are model estimates,
+not verified identities.
+
+The ID is a SHA-256 digest of the existing `URL||title` cache key, so it is stable
+across days but a changed title or URL is a different article. The JSON cache
+stores the history with the processed article. With `--new-today`, cached
+articles are reused without fetching their pages or running classification,
+image analysis, or rewriting again; identical history pages are not rewritten.
+If a story occurs in multiple queries, its page includes those query histories.
+The standalone formatter also generates these pages from cached histories when
+given `--output`. Missing output pages can be recreated without reprocessing.
+Legacy cache entries have no history and remain unlinked until actually
+reprocessed; console output does not create pages.
+
+Publish/copy the story pages alongside the summary so the relative links work.
+These pages contain retrieved article text and model outputs, but not the
+application's API configuration or credentials. Consider this before publishing
+them publicly. Cache expiration does not delete previously generated HTML pages.
+
 ## Prerequisites
 
 - **Python 3.12** (3.9 is too old, 3.13 doesn't yet have the binary wheels for some of the packages on MacOS.  Yay Python!, you always make things hard!)

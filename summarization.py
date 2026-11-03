@@ -1,6 +1,7 @@
 import sys
 import argparse
 from transformers import pipeline
+from processing_history import record_model_event
 
 # Add at the top of summarization.py
 import logging
@@ -86,6 +87,10 @@ def summarize_text_using_local_model(input_text, model="facebook/bart-large-cnn"
             chunk_token_count = len(chunk) // 4
             chunk_max_length = min(adjusted_max_length, max(min_length, chunk_token_count // 3))
             chunk_min_length = min(adjusted_min_length, max(10, chunk_max_length // 2))
+            record_model_event("Hugging Face summary request", {
+                "model": model, "input_chunk": chunk, "max_length": chunk_max_length,
+                "min_length": chunk_min_length, "chunk_count": len(chunks),
+            })
 
             summary = summarizer(
                 chunk,
@@ -94,6 +99,7 @@ def summarize_text_using_local_model(input_text, model="facebook/bart-large-cnn"
                 do_sample=False  # Consistent, deterministic output
             )
             summarized_chunks.append(summary[0]["summary_text"])
+            record_model_event("Hugging Face summary response", {"response": summary[0]["summary_text"]})
 
         # Combine summarized chunks into a single output
         final_summary = " ".join(summarized_chunks)
@@ -112,6 +118,10 @@ def summarize_text_using_local_model(input_text, model="facebook/bart-large-cnn"
         return final_summary
     except Exception as e:
         logger.error(f"Summarization failed: {e}")
+        record_model_event("Hugging Face summary error and fallback", {
+            "model": model, "error": str(e), "fallback": "Original text truncated to max_length * 4 characters",
+            "original_characters": len(input_text), "character_limit": max_length * 4,
+        })
         # Return a truncated version of the original text as fallback
         return input_text[:max_length * 4] + "..." if len(input_text) > max_length * 4 else input_text
 

@@ -6,6 +6,18 @@ This document describes how to test the Less-Biased News system.
 
 ## Test Scripts
 
+### Processing history regressions (offline)
+
+```bash
+python -m unittest discover -s tests -p 'test_processing_history.py'
+```
+
+These tests cover stable IDs, cached-article reuse, retrieval diagnostics, image
+confidence/selection/sizing, per-operation diffs, model truncation and fallback,
+HTML escaping, and linked pages from both output commands. They mock external
+services and execute production functions without importing the heavyweight
+AI/NLP dependencies; no API keys, model downloads, or network access are needed.
+
 ### test_pipeline.py - Pipeline Testing Tool
 
 A comprehensive tool for testing article processing pipelines on cached articles. This allows you to:
