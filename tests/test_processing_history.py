@@ -81,6 +81,23 @@ class ProcessingHistoryTests(unittest.TestCase):
         self.assertEqual(self.art["content"], "He led.")
         self.assertIn("Leadership classification skipped", [s["name"] for s in steps])
 
+    def test_none_description_remains_safe_with_history(self):
+        self.art["description"] = None
+        self.qcfg.update(fallback="exclude", remove_male_pronouns=True)
+        steps = self.process()
+        self.assertEqual(self.art["content"], "")
+        description = next(s for s in steps if s["name"] == "Use provider description")
+        self.assertEqual(description["after"], "")
+
+    def test_non_string_model_output_is_tracked_before_history_diff(self):
+        self.pipeline.short_summary.return_value = None
+        steps = self.process()
+        self.assertEqual(self.art["content"], "")
+        self.pipeline.get_timing_tracker().record_error.assert_called_with("content_not_string")
+        summary = next(s for s in steps if s["name"] == "short_summary")
+        self.assertIn("NoneType", summary["details"]["error"])
+        self.assertEqual(summary["after"], "")
+
     def test_spin_pronouns_initials_and_background_each_have_diff(self):
         self.qcfg.update(fallback="spin_genders", remove_male_pronouns=True, male_initials=True)
         steps = self.process()
