@@ -6,6 +6,7 @@ os.environ["USE_TENSOR_PARALLEL"] = "0"
 
 import json
 import logging
+from processing_history import record_model_event
 import os
 from pathlib import Path
 import psutil
@@ -273,6 +274,10 @@ class AIUtils:
                 f"Calling Ollama API with model: {model_name}, "
                 f"prompt_length: {len(prompt)}, stream: False, think: False"
             )
+            record_model_event("Ollama request", {
+                "task": task, "model": model_name, "sent_prompt": prompt,
+                "max_output_tokens": max_tokens, "temperature": temperature,
+            })
 
             # Call Ollama API (client was initialized with custom host in __init__)
             response = self.ollama_client.generate(
@@ -287,6 +292,7 @@ class AIUtils:
             )
 
             result = response.get("response", "").strip()
+            record_model_event("Ollama response", {"task": task, "response": result})
             if not result:
                 try:
                     raw_body = json.dumps(dict(response))
@@ -302,4 +308,5 @@ class AIUtils:
         
         except Exception as e:
             logger.error(f"Ollama API call failed: {e}")
+            record_model_event("Ollama API error", {"task": task, "error": str(e)})
             return ""

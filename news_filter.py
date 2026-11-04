@@ -31,8 +31,9 @@ from ai_queries import (
     clean_article,
     reject_classification,
 )
-from news_formatter import generate_text, generate_html
+from news_formatter import generate_text, generate_html, get_image_size_and_url, FEMALE_IMAGE_STATUSES
 from timing_tracker import get_timing_tracker
+from processing_history import start_history, record_step, write_processing_pages, history_scope
 
 # Approximate a character→token ratio if tiktoken not available:
 APPROX_CHARS_PER_TOKEN = 4
@@ -575,10 +576,16 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         raw_articles = fetch_articles(qcfg, cfg, use_cache=use_cache)
 
         # ─── Extract Names, Bodies, and Images ────────────────
-        bodies, images, all_persons = gather_bodies_images_and_persons(raw_articles, nlp, max_images=max_images)
+        pending_articles = [
+            art for art in raw_articles
+            if not new_today or get_article_key(art) not in cached_keys
+        ]
+        bodies, images, all_persons = gather_bodies_images_and_persons(pending_articles, nlp, max_images=max_images)
+        extracted = {id(art): (body, image_list)
+                     for art, body, image_list in zip(pending_articles, bodies, images)}
 
         # Perform gender detection
-        gender_map = guess_genders(all_persons, gndr)
+        gender_map = guess_genders(all_persons, gndr) if all_persons else {}
 
         hits = []
         stats = {"total": len(raw_articles), "persons": 0, "female_names": 0,
@@ -591,9 +598,10 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
 
         # ─── Process Each Article ────────────────
         tracker = get_timing_tracker()
-        for art, body, image_list in zip(raw_articles, bodies, images):
-            # Process spaCy PERSON entities
-            art["body"] = body
+        for art in raw_articles:
+            if id(art) in extracted:
+                body, image_list = extracted[id(art)]
+                art["body"] = body
             
             # Check if article is in cache
             article_key = get_article_key(art)
@@ -612,6 +620,9 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                     # Fetch status and content from cached data if article is not new
                     cached_art = cached_data_map.get(article_key)
                     if cached_art:
+                        # Reuse the original body, identity and history as well as generated content.
+                        art.update(cached_art)
+                        art["new_today"] = False
                         art["status"] = cached_art.get("status", qcfg["fallback"])
                         art["content"] = cached_art.get("content", art.get("description", "[No content available]"))
                         art["image_urls"] = cached_art.get("image_urls", [])
@@ -686,12 +697,43 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
     # We'll clean the article when we're sure we need it cleaned
     #body = clean_article(art["body"], cfg, aiclient)
     body = art["body"]
+    if "processing_history" not in art:
+        start_history(art)
+        record_step(art, "Provided article body", {"text": body, "image_urls": image_list})
+    record_step(art, "Query rules", {
+        "query": qcfg.get("name"), "classification": check_boolean(qcfg, "classification", True),
+        "fallback": qcfg.get("fallback"), "fallback_women": qcfg.get("fallback_women"),
+        "fallback_image_female": qcfg.get("fallback_image_female"),
+        "summarize_selected": summarize_selected,
+        "remove_male_pronouns": qcfg.get("remove_male_pronouns", False),
+        "male_initials": qcfg.get("male_initials", False),
+    })
+
+    def transform(name, text, operation, **details):
+        with history_scope(art):
+            result = operation(text)
+        if not isinstance(result, str):
+            logger.warning(f"Article content is not a string (got {type(result).__name__}), defaulting to empty string")
+            get_timing_tracker().record_error("content_not_string")
+            details["error"] = f"Operation returned {type(result).__name__}; replaced with empty string"
+            result = ""
+        record_step(art, name, {
+            "prompt": cfg.get("prompts", {}).get(name), **details,
+            "output_unchanged": result == text,
+            "output_empty": not bool(result),
+        }, before=text, after=result)
+        return result
     
     # Check if rejection prompt is specified for this query
     rejection_prompt = qcfg.get("rejection_prompt")
     if rejection_prompt:
         logger.info(f"Checking article '{art.get('title', 'Unknown')}' for rejection using prompt: {rejection_prompt}")
-        is_rejected, rejection_response = reject_classification(body, cfg, aiclient, rejection_prompt, title=art.get('title'))
+        with history_scope(art):
+            is_rejected, rejection_response = reject_classification(body, cfg, aiclient, rejection_prompt, title=art.get('title'))
+        record_step(art, "Rejection check", {
+            "prompt": cfg.get("prompts", {}).get(rejection_prompt),
+            "response": rejection_response, "rejected": is_rejected,
+        })
         
         if is_rejected:
             logger.info(f"Article REJECTED: {art.get('title', 'Unknown')}")
@@ -699,6 +741,7 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
             # Mark article as excluded and store rejection response
             art["status"] = "exclude"
             art["rejection_response"] = rejection_response
+            record_step(art, "Final decision", {"status": "exclude", "reason": "Rejection check rejected story"})
             return  # Skip further processing (no content generation needed)
         else:
             logger.info(f"Article ACCEPTED: {art.get('title', 'Unknown')}")
@@ -707,9 +750,15 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     stats["persons"] += bool(persons)  # Increment PERSON counter if entities are found
     if check_boolean(qcfg, "classification", True):
-        is_female_leader, leader_name = identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient)
+        with history_scope(art):
+            is_female_leader, leader_name = identify_female_leadership(
+                body, cfg, gender_map, persons, stats, aiclient, history_article=art)
     else:
         is_female_leader, leader_name = False, None
+        record_step(art, "Leadership classification skipped", {"reason": "Query classification is disabled"})
+    record_step(art, "Detected people", {"persons": persons, "gender_map": {
+        person: gender_map.get(person) for person in persons
+    }})
     # Classify articles based on gender leadership
     if is_female_leader:
         art["status"] = "female_leader"
@@ -723,6 +772,12 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
                 break
         else:
             art["status"] = qcfg["fallback"]
+    record_step(art, "Text-based decision", {
+        "status": art["status"], "is_female_leader": is_female_leader, "leader_name": leader_name,
+        "reason": "Female leadership" if is_female_leader else
+                  "Female name fallback" if any(gender_map.get(p) == "female" for p in persons)
+                  else "Default query fallback",
+    })
 
     # Process all images to classify them for HTML display (even if we don't use fallback_image_female)
     process_article_images(art, image_list)
@@ -730,10 +785,11 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
     # Handle article processing based on classification
     if art["status"] == "female_leader":
         # If the article is classified as about a female leader, handle content summarization
-        cleaned = clean_article(body, cfg, aiclient)
+        cleaned = transform("clean_article", body, lambda text: clean_article(text, cfg, aiclient))
         if summarize_selected:
             logger.info(f"Clean-summarizing '{art['title']}'")
-            art["content"] = clean_summary(cleaned, cfg, aiclient, leader_name=art.get("leader_name"))
+            art["content"] = transform("clean_summary", cleaned, lambda text: clean_summary(
+                text, cfg, aiclient, leader_name=art.get("leader_name")), leader_name=art.get("leader_name"))
         else:
             # Keep the full fetched body
             art["content"] = cleaned
@@ -741,35 +797,64 @@ def categorize_article_and_generate_content(art,  image_list, cfg, qcfg, aiclien
         # Handle fallback logic for image statuses (check if first image contains a woman)
         img_stat = art.get("most_relevant_status", "")
         if img_stat in ("female", "female_majority", "female_prominent"):
+            previous_status = art["status"]
             art["status"] = qcfg.get("fallback_image_female", qcfg["fallback"])
+            record_step(art, "Image-based fallback", {
+                "previous_status": previous_status, "status": art["status"],
+                "image_status": img_stat, "image_url": art.get("most_relevant_image"),
+            })
             logger.info(f"Applying image-based fallback '{art['status']}' for article '{art['title']}'")
         if art["status"] == "show_full":
-            cleaned = clean_article(body, cfg, aiclient)
-            art["content"] = clean_summary(cleaned, cfg, aiclient, leader_name="women in general") if summarize_selected else cleaned
+            cleaned = transform("clean_article", body, lambda text: clean_article(text, cfg, aiclient))
+            art["content"] = transform("clean_summary", cleaned, lambda text: clean_summary(
+                text, cfg, aiclient, leader_name="women in general"),
+                leader_name="women in general") if summarize_selected else cleaned
         elif art["status"] == "short_summary":
             # Generate a short summary
-            cleaned = clean_article(body, cfg, aiclient)
-            art["content"] = short_summary(cleaned, cfg, aiclient)
+            cleaned = transform("clean_article", body, lambda text: clean_article(text, cfg, aiclient))
+            art["content"] = transform("short_summary", cleaned, lambda text: short_summary(text, cfg, aiclient))
         elif art["status"] == "spin_genders":
             # Apply gender-spin logic
-            cleaned = clean_article(body, cfg, aiclient)
-            art["content"] = spin_genders(cleaned, cfg, aiclient)
+            cleaned = transform("clean_article", body, lambda text: clean_article(text, cfg, aiclient))
+            art["content"] = transform("spin_genders", cleaned, lambda text: spin_genders(text, cfg, aiclient))
         else:
             # Default to the article's description, but this article will usually be excluded anyways.
             art["content"] = art.get("description") or ""
+            record_step(art, "Use provider description", {"status": art["status"]},
+                        before=body, after=art["content"])
     # Ensure content is always a string before post-processing (AI functions or None description may produce non-str)
     if not isinstance(art.get("content"), str):
         logger.warning(f"Article content is not a string (got {type(art.get('content')).__name__}), defaulting to empty string")
         get_timing_tracker().record_error("content_not_string")
         art["content"] = ""
     if qcfg.get("remove_male_pronouns", False):
-        art["content"] = replace_male_pronouns_with_neutral(art["content"])
+        art["content"] = transform("Neutralize male pronouns", art["content"], replace_male_pronouns_with_neutral)
     if qcfg.get("male_initials", False):
-        art["content"] = replace_male_first_names_with_initials(art["content"], gender_map)
+        art["content"] = transform("Replace male names with initials", art["content"],
+                                   lambda text: replace_male_first_names_with_initials(text, gender_map),
+                                   gender_map=gender_map)
     if art["status"] in ("show_full", "spin_genders"):
-        art["content"] = add_background_on_women(art["content"], cfg, aiclient)
+        art["content"] = transform("add_background_on_women", art["content"],
+                                   lambda text: add_background_on_women(text, cfg, aiclient))
+    record_step(art, "Final decision", {
+        "status": art["status"], "summarize_selected": summarize_selected,
+        "content_words": len(art["content"].split()), "content_characters": len(art["content"]),
+        "web_content_source": "generated content" if art["content"] else "provider description fallback",
+        "web_content": art["content"] or art.get("description") or "",
+    })
+    record_step(art, "Web image presentation", {
+        "sizing_rule": "Female-status images use female_base (default 400px); no_face uses "
+                       "no_face_base (200px); all others use other_base (150px). Only final "
+                       "female_leader stories get leader_multiplier (default 2).",
+        "configured_sizes": cfg.get("image_sizes", {}),
+        "images": [{
+            "url": url, "status": analysis["status"],
+            "displayed": url == art.get("most_relevant_image") or analysis["status"] in FEMALE_IMAGE_STATUSES,
+            "max_width_px": get_image_size_and_url(art, image_url=url, cfg=cfg)[0],
+        } for url, analysis in art.get("image_analysis", {}).items()],
+    })
 
-def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
+def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient, history_article=None):
     """
     Identify if article is about female leadership.
     
@@ -788,6 +873,22 @@ def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
     
     is_female_leader = False
     leader_name = None
+    diagnostics = {
+        "use_local_checks": use_local_checks,
+        "require_female_names": require_female_names,
+        "require_leadership_keywords": require_leadership_keywords,
+        "female_names": [p for p in persons if gender_map.get(p) == "female"],
+        "matching_keywords": [kw for kw in cfg.get("leadership_keywords", []) if kw.lower() in body.lower()],
+        "prompt": cfg.get("prompts", {}).get("classification"),
+    }
+
+    def finish(called):
+        if history_article is not None:
+            record_step(history_article, "Leadership classification", {
+                **diagnostics, "llm_called": called,
+                "is_female_leader": is_female_leader, "leader_name": leader_name,
+            })
+        return is_female_leader, leader_name
     
     if not use_local_checks:
         # Skip local checks, directly call LLM
@@ -795,8 +896,9 @@ def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
             is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
         except Exception as e:
             logger.warning(f"LLM classification error: {e}")
+            diagnostics["error"] = str(e)
             get_timing_tracker().record_error("llm_classification_error")
-        return is_female_leader, leader_name
+        return finish(True)
     
     # Perform local checks
     female_names = [p for p in persons if gender_map.get(p) == "female"]
@@ -822,9 +924,10 @@ def identify_female_leadership(body, cfg, gender_map, persons, stats, aiclient):
             is_female_leader, leader_name = classify_leadership(body, cfg, aiclient)
         except Exception as e:
             logger.warning(f"LLM classification error: {e}")
+            diagnostics["error"] = str(e)
             get_timing_tracker().record_error("llm_classification_error")
     
-    return is_female_leader, leader_name
+    return finish(should_call_llm)
 
 
 def process_article_images(art, image_list):
@@ -844,12 +947,17 @@ def process_article_images(art, image_list):
     for image_url in image_list:
         logger.info(f"[ImagePipeline] → Analyzing: {image_url}")
 
+        error = None
+        diagnostics = {}
         try:
-            faces, dimensions = analyze_image_gender(image_url)
+            faces, dimensions = analyze_image_gender(image_url, diagnostics=diagnostics)
+            if faces is None:
+                error = diagnostics.get("error") or "Image analysis failed; no usable result returned by image analyzer"
         except Exception as e:
             logger.error(f"[ImagePipeline] DeepFace error on {image_url}: {e}", exc_info=True)
             get_timing_tracker().record_error("image_pipeline_exception")
             faces, dimensions = [], None
+            error = str(e)
 
         logger.info(f"[ImagePipeline]   Faces detected: {faces}")
 
@@ -875,6 +983,9 @@ def process_article_images(art, image_list):
             "status": image_status,
             "prominence_score": prominence_score,
             "raw_faces": faces,
+            "dimensions": dimensions,
+            "error": error,
+            "diagnostics": diagnostics,
         }
 
         current_priority = (
@@ -910,6 +1021,18 @@ def process_article_images(art, image_list):
     if not art.get("most_relevant_image") and image_list:
         art["most_relevant_image"] = image_list[0]
         logger.info(f"[ImagePipeline] Fallback: selected first image: {image_list[0]}")
+    record_step(art, "Image analysis and selection", {
+        "image_count": len(image_list), "female_confidence_threshold": FEMALE_CONFIDENCE_THRESHOLD,
+        "selection_rule": "Prefer female, then female_majority, then female_prominent; "
+                          "break ties by prominence, then original order. Always display the headline "
+                          "image; display other images only if they have a female status.",
+        "selected_image": art["most_relevant_image"],
+        "selected_status": art["most_relevant_status"], "images": art["image_analysis"],
+        "discarded_from_display": [
+            url for url in image_list if url != art["most_relevant_image"]
+            and art["image_analysis"][url]["status"] not in valid_statuses
+        ],
+    })
 
 def fetch_newsapi(cfg, name, qcfg, newsapi):
     desired = qcfg.get("page_size", 100)
@@ -1042,9 +1165,13 @@ def gather_bodies_images_and_persons(
 
     for art in raw_articles:
         url = art.get("url", "")
+        start_history(art)
+        retrieval = {"url": url, "max_images": max_images}
 
         # 1) Fetch text + multiple images using the helper function
-        body, image_urls = fetch_full_text_and_images(url, max_images=max_images)
+        body, image_urls = fetch_full_text_and_images(url, max_images=max_images, diagnostics=retrieval)
+        retrieval["extracted_text"] = body
+        retrieval["used_provider_fallback"] = not bool(body)
 
         # 2) Fallback if text extraction failed
         if not body:
@@ -1052,6 +1179,8 @@ def gather_bodies_images_and_persons(
                 art.get("title", ""),
                 art.get("description", "")
             ]))
+        retrieval.update(body_used=body, analyzed_image_urls=image_urls, image_count=len(image_urls))
+        record_step(art, "Article retrieval", retrieval)
 
         # Append the body and the list of image URLs
         bodies.append(body)
@@ -1077,6 +1206,10 @@ def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text"
 
     try:
         res = fetch_and_filter(cfg, use_cache, new_today, expire_days)  # Pass flags to fetch_and_filter
+        if output is None:
+            output = "news.html" if fmt == "html" else "news.txt"
+        if output.lower() != "console":
+            write_processing_pages(res, os.path.dirname(os.path.abspath(output)))
 
         # Extract metadata (query strings) for HTML generation
         metadata = {section["name"]: section["q"] for section in cfg["queries"] if "name" in section and "q" in section}
@@ -1086,9 +1219,6 @@ def main(config_path: str = "config.yaml", output: str = None, fmt: str = "text"
             out = generate_text(res, metadata)
 
         # Determine output file format
-        if output is None:
-            output = "news.html" if fmt == "html" else "news.txt"
-
         if output.lower() == "console":
             print(out)
         else:

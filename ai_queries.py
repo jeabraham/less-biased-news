@@ -12,6 +12,7 @@ import tiktoken
 
 from summarization import summarize_text_using_local_model
 from timing_tracker import get_timing_tracker
+from processing_history import record_model_event
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,10 @@ def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, 
         MAX_INPUT_CHARS = cfg.get("ollama", {}).get("max_input_chars", 32000)
 
         if len(text) > MAX_INPUT_CHARS:
+            record_model_event("Ollama input truncation", {
+                "original_characters": len(text), "max_input_chars": MAX_INPUT_CHARS,
+                "discarded_characters": len(text) - MAX_INPUT_CHARS,
+            })
             logger.warning(
                 f"Input text too long ({len(text)} chars), truncating to {MAX_INPUT_CHARS} chars"
             )
@@ -177,10 +182,15 @@ def ollama_call(prompt: str, text: str, return_tokens: int, cfg: dict, ai_util, 
             "refused": refused,
             "raw": raw_result,
         }
+        record_model_event("Ollama response handling", {
+            "task": task, "refused": refused, "raw_response": raw_result,
+            "refusal_markers": refusal_snippets,
+        })
         return should_return["text"]
 
     except Exception as e:
         logger.error(f"Ollama API call failed: {e}")
+        record_model_event("Ollama call error", {"task": task, "error": str(e)})
         # return {
         #     "text": "",
         #     "refused": True,
@@ -214,6 +224,12 @@ def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, 
 
     safe_text = truncate_for_openai(prompt, text, max_tokens=max_toks - return_tokens, tokenizer=tokenizer)
     prompt_plus_text = prompt + "\n\n" + safe_text
+    record_model_event("OpenAI request", {
+        "task": task, "model": model, "prompt": prompt, "input_text": safe_text,
+        "original_characters": len(text), "sent_characters": len(safe_text),
+        "max_output_tokens": return_tokens, "input_token_budget": max_toks - return_tokens,
+        "temperature": temp,
+    })
     logger.debug("Running OpenAI call")
 
     for attempt in range(max_retries + 1):
@@ -226,9 +242,11 @@ def open_ai_call(prompt: str, text: str, return_tokens: int, cfg: dict, client, 
             )
             answer = resp.choices[0].message.content.strip()
             logger.debug(f"OpenAI result: {answer}")
+            record_model_event("OpenAI response", {"task": task, "response": answer})
             return answer
         except Exception as e:
             error_message = str(e)
+            record_model_event("OpenAI error", {"task": task, "attempt": attempt + 1, "error": error_message})
 
             # Check if this is a rate limit error
             if "rate_limit" in error_message.lower() and attempt < max_retries:
@@ -286,6 +304,11 @@ def run_local_call(
     # 3) Tokenize and move inputs to the right device
     encoding = tokenizer(prompt_plus_text, return_tensors="pt", truncation=True, max_length= max_length)
     inputs = {k: t.to(device) for k, t in encoding.items()}
+    record_model_event("Local model request", {
+        "model": cfg["localai"].get("model"), "max_input_tokens": max_length,
+        "max_output_tokens": return_tokens, "sent_input": tokenizer.decode(
+            encoding["input_ids"][0], skip_special_tokens=True),
+    })
 
     # 4) Generate using max_new_tokens
     gen_kwargs = {
@@ -300,7 +323,9 @@ def run_local_call(
     outputs = model.generate(**inputs, **gen_kwargs)
 
     # 5) Decode and return
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+    result = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    record_model_event("Local model response", {"response": result})
+    return result
 
 
 def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
@@ -332,6 +357,7 @@ def classify_leadership(text: str, cfg: dict, ai_util) -> bool:
             )
         else:
             logger.debug("Failed classification: No LLM provider available")
+            record_model_event("Leadership classification skipped", {"reason": "No LLM provider available"})
             return False, None
         
         # Process the result
@@ -458,6 +484,7 @@ def short_summary(text: str, cfg: dict, ai_util) -> str:
                     return ""
         else:
             logger.debug("Failed to generate short summary: No available summarization method")
+            record_model_event("Short summary skipped", {"reason": "No available summarization method"})
             return ""
 
         logger.info("Summary generated")
@@ -511,6 +538,7 @@ def clean_summary(text: str, cfg: dict, ai_util, leader_name: str = None) -> str
             )
         else:
             logger.debug("Failed clean summary: No LLM provider available")
+            record_model_event("Clean summary skipped", {"reason": "No LLM provider available"})
             return text
 
         return cleaned_summary
@@ -548,6 +576,7 @@ def spin_genders(text: str, cfg: dict, ai_util) -> str:
             )
         else:
             logger.debug("Failed spin_genders: No LLM provider available")
+            record_model_event("Gender spin skipped", {"reason": "No LLM provider available"})
             return text
 
         logger.info("Received spin_genders rewrite")
@@ -586,6 +615,7 @@ def clean_article(text: str, cfg: dict, ai_util) -> str:
             )
         else:
             logger.debug("Failed clean_article: No LLM provider available")
+            record_model_event("Article cleaning skipped", {"reason": "No LLM provider available"})
             return text
 
         logger.info("Received clean_article")
@@ -624,6 +654,7 @@ def add_background_on_women(text: str, cfg: dict, ai_util) -> str:
             )
         else:
             logger.debug("Failed add_background_on_women: No LLM provider available")
+            record_model_event("Background addition skipped", {"reason": "No LLM provider available"})
             return text
 
         logger.info("Received add_background_on_women enhancement")

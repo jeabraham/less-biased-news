@@ -6,6 +6,52 @@ This document describes how to test the Less-Biased News system.
 
 ## Test Scripts
 
+### Processing history regressions (offline)
+
+```bash
+python -m unittest discover -s tests -p 'test_processing_history.py'
+```
+
+These tests cover stable IDs, cached-article reuse, retrieval diagnostics, image
+confidence/selection/sizing, per-operation diffs, model truncation and fallback,
+HTML escaping, and linked pages from both output commands. They mock external
+services and execute production functions without importing the heavyweight
+AI/NLP dependencies; no API keys, model downloads, or network access are needed.
+
+### CBC image regression and live reproduction
+
+```bash
+# Offline URL handling and worker error propagation; no DeepFace model download
+python -m unittest discover -s tests -p 'test_cbc_image.py'
+
+# Real download, face detection and gender scores for the reported CBC image
+RUN_CBC_IMAGE_TEST=1 python -m unittest discover -s tests -p 'test_cbc_image.py'
+
+# If CBC is unreachable from the test host, use a separately downloaded image
+CBC_IMAGE_SOURCE=/path/to/downloaded.jpg RUN_CBC_IMAGE_TEST=1 \
+  python -m unittest discover -s tests -p 'test_cbc_image.py'
+```
+
+Requires the image analyzer's dependencies from `requirements.txt`. The live
+test prints dimensions, raw per-face scores, normalized confidence, prominence,
+the production image classification, its default display width, and any failure
+diagnostics. It requires a working network connection and
+DeepFace model weights (which may be downloaded on first use). It does not assert
+a person's gender from their appearance. The offline tests use synthetic image
+bytes; no CBC photograph is stored in this repository.
+
+On November 3, 2026, the supplied `i.cbc.ca` URL failed DNS resolution in the
+agent environment, before image decoding or DeepFace. This does **not** establish
+why an earlier run on another machine failed. Requests with browser-style
+User-Agent, Accept, and Referer headers failed at the same DNS lookup; changing
+headers cannot fix a failure that happens before HTTP. Previously the worker returned
+`faces: null` with exit code zero and its detailed warning was discarded by the
+parent. Worker JSON now includes `diagnostics` with a failure stage and the
+original exception; the parent logs and stores this in the story history.
+Use `image_load` versus `face_analysis` to distinguish download/decoding failures
+from detector/model failures; a successful run's scores can then explain why an
+image did or did not meet the female-confidence threshold.
+
 ### test_pipeline.py - Pipeline Testing Tool
 
 A comprehensive tool for testing article processing pipelines on cached articles. This allows you to:
