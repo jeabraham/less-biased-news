@@ -463,14 +463,16 @@ def replace_male_pronouns_with_neutral(text):
         # This handles cases like "his too." or "his alone," or "his also!"
         (r"\bhis\b(?=\s+(?:too|alone|also|as well|entirely|exclusively|only)(?:\s*[,;.!?]|\s*$))", "theirs"),
 
-        # 'his' determiner (followed by space and then a word) → their
-        # This pattern matches "his" when it's followed by whitespace and then a word character
-        # This will catch most cases like "his book", "his lifelong dream", "his only wish", etc.
-        (r"\bhis\b(?=\s+\w)", "their"),
+        # 'his' determiner (followed by a word or quoted phrase) → their
+        # This catches determiners before words and quoted phrases.
+        (r"\bhis\b(?=\s+(?:\w|[\"'“‘]))", "their"),
 
         # standalone 'his' → theirs (possessive pronoun)
         # This catches everything else: end of string, before punctuation, etc.
         (r"\bhis\b", "theirs"),
+
+        # Repair malformed possessives returned by the rewrite model, e.g. "theirs 'ultimate power'"
+        (r"\btheirs\b(?=\s+(?!(?:is|are|was|were|has|have|does|do|did|can|could|will|would|should|might|must|too|alone|also|entirely|exclusively|only)\b)(?!as\s+well\b)(?:\w|[\"'“‘]))", "their"),
 
         # him → them
         (r"\bhim\b", "them"),
@@ -498,6 +500,24 @@ def replace_male_pronouns_with_neutral(text):
             text,
             flags=re.IGNORECASE
         )
+
+    verb_replacements = {
+        "does": "do",
+        "doesn't": "don't",
+        "is": "are",
+        "was": "were",
+        "has": "have",
+    }
+
+    def replace_singular_verb(match):
+        return match.group(1) + match_case(verb_replacements[match.group(2).lower()], match.group(2))
+
+    text = re.sub(
+        r"\b(they\s+)(doesn't|does|is|was|has)\b",
+        replace_singular_verb,
+        text,
+        flags=re.IGNORECASE,
+    )
 
     return text
 
