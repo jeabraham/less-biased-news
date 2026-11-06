@@ -67,6 +67,24 @@ class TestPronounReplacement(unittest.TestCase):
             "They themself did it."
         )
 
+    def test_quoted_possessive_determiner_and_verb_agreement(self):
+        """Repair malformed possessives and verb agreement in rewritten text."""
+        self.assertEqual(
+            replace_male_pronouns_with_neutral(
+                'And speaking to Fox News on Tuesday night, Trump touted theirs "ultimate power" '
+                "of veto to shut down bills passed by Congress that they does not like."
+            ),
+            'And speaking to Fox News on Tuesday night, Trump touted their "ultimate power" '
+            "of veto to shut down bills passed by Congress that they do not like."
+        )
+
+    def test_possessive_pronoun_before_verb_is_preserved(self):
+        """Do not treat a possessive pronoun before a verb as a determiner."""
+        self.assertEqual(
+            replace_male_pronouns_with_neutral("Theirs is the final decision."),
+            "Theirs is the final decision."
+        )
+
     def test_possessive_pronoun_with_question_mark(self):
         """Test 'his' as possessive pronoun with question mark."""
         self.assertEqual(
