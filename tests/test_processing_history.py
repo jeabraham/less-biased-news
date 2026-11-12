@@ -2,7 +2,7 @@
 
 import ast
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
@@ -30,6 +30,7 @@ def load_pipeline_functions(filename):
     module = types.ModuleType(filename)
     module.__dict__.update(
         logger=logging.getLogger(filename), os=os, json=json, re=re, datetime=datetime, timedelta=timedelta,
+        timezone=timezone,
         start_history=history.start_history, record_step=history.record_step,
         history_scope=history.history_scope, write_processing_pages=history.write_processing_pages,
         record_model_event=history.record_model_event,
@@ -235,6 +236,84 @@ class ProcessingHistoryTests(unittest.TestCase):
         self.assertEqual(result["body"], cached["body"])
         self.assertFalse(result["new_today"])
 
+    def test_publication_age_and_unknown_dates(self):
+        cutoff = datetime(2026, 1, 8, 12, tzinfo=timezone.utc)
+        recent = self.pipeline.is_recent_article
+        self.assertTrue(recent({"publishedAt": "2026-01-08T12:00:00Z"}, cutoff))
+        self.assertFalse(recent({"published_at": "2026-01-08T13:59:59+02:00"}, cutoff))
+        self.assertTrue(recent({"published_at": "2026-01-08T12:00:00"}, cutoff))
+        with self.assertLogs("news_filter.py", level="WARNING") as logs:
+            self.assertTrue(recent({"publishedAt": "invalid"}, cutoff))
+            self.assertTrue(recent({}, cutoff))
+        self.assertEqual(len(logs.output), 2)
+
+    def test_unseen_old_articles_are_processed_but_not_new(self):
+        self.pipeline.NewsApiClient = Mock()
+        self.pipeline.spacy = Mock(load=Mock(return_value=self.nlp))
+        self.pipeline.Genderize = Mock()
+        self.pipeline.AIUtils = Mock()
+        now = datetime.now(timezone.utc)
+        articles = [
+            {"title": "Old", "url": "old", "published_at": (now - timedelta(days=8)).isoformat()},
+            {"title": "Recent", "url": "recent", "publishedAt": (now - timedelta(days=6)).isoformat()},
+            {"title": "Cached", "url": "cached", "publishedAt": now.isoformat()},
+        ]
+        self.pipeline.fetch_articles = Mock(return_value=deepcopy(articles))
+        self.pipeline.gather_bodies_images_and_persons = Mock(
+            side_effect=lambda pending, *args, **kwargs: (["body"] * len(pending), [[] for _ in pending], set()))
+        self.pipeline.categorize_article_and_generate_content = Mock(
+            side_effect=lambda art, *args: art.update(status="short_summary", content=art["title"]))
+        cfg = {"newsapi": {"api_key": "not-real"}, "queries": [self.qcfg]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "cache.json")
+            self.pipeline.get_cache_file_path = Mock(return_value=path)
+            self.pipeline.save_cache(path, {"articles": [articles[2]]})
+            result = self.pipeline.fetch_and_filter(cfg, new_today=True)
+            self.assertEqual([a["new_today"] for a in result["Example"]], [False, True, False])
+            self.assertEqual(self.pipeline.categorize_article_and_generate_content.call_count, 2)
+            self.assertEqual([a["title"] for _, a in news_formatter.get_new_today_articles(result)], ["Recent"])
+            self.assertIn("Old", news_formatter.generate_html(result))
+            cached = self.pipeline.load_cache(path)["articles"]
+            self.assertNotIn("_reprocessed", cached["old||Old"]["article_data"])
+            self.pipeline.fetch_articles.return_value = deepcopy(articles)
+            self.pipeline.fetch_and_filter(cfg, new_today=True)
+            self.assertEqual(self.pipeline.categorize_article_and_generate_content.call_count, 2)
+            self.pipeline.get_cache_file_path.return_value = str(Path(directory) / "other.json")
+            self.pipeline.fetch_articles.return_value = deepcopy(articles[:1])
+            result = self.pipeline.fetch_and_filter({**cfg, "not_new_if_older_than": 9}, new_today=True)
+            self.assertTrue(result["Example"][0]["new_today"])
+
+    def test_cache_retention_default_config_and_override(self):
+        self.pipeline.NewsApiClient = Mock()
+        self.pipeline.spacy = Mock(load=Mock(return_value=self.nlp))
+        self.pipeline.Genderize = Mock()
+        self.pipeline.AIUtils = Mock()
+        self.pipeline.fetch_articles = Mock(return_value=[])
+        self.pipeline.gather_bodies_images_and_persons = Mock(return_value=([], [], set()))
+        cfg = {"newsapi": {"api_key": "not-real"}, "queries": [self.qcfg]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "cache.json")
+            self.pipeline.get_cache_file_path = Mock(return_value=path)
+            def seed():
+                entries = {
+                    str(days): {"first_seen": (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(),
+                                "article_data": {"title": str(days)}}
+                    for days in (10, 59, 61)
+                }
+                Path(path).write_text(json.dumps({"articles": entries}))
+            seed()
+            self.pipeline.fetch_and_filter(cfg)
+            self.assertEqual(set(self.pipeline.load_cache(path)["articles"]), {"10", "59"})
+            seed()
+            cfg["cache_expire_days"] = 20
+            self.pipeline.fetch_and_filter(cfg)
+            self.assertEqual(set(self.pipeline.load_cache(path)["articles"]), {"10"})
+            seed()
+            self.pipeline.fetch_and_filter(cfg, expire_days=65)
+            self.assertEqual(set(self.pipeline.load_cache(path)["articles"]), {"10", "59", "61"})
+        with self.assertRaises(ValueError):
+            self.pipeline.fetch_and_filter({**cfg, "not_new_if_older_than": -1})
+
     def test_model_truncation_and_refusal_are_recorded(self):
         queries = load_pipeline_functions("ai_queries.py")
         ai = Mock()
@@ -271,6 +350,16 @@ class ProcessingHistoryTests(unittest.TestCase):
             history.write_processing_pages({"First": [self.art]}, directory)
             self.assertEqual(path.read_text(), content)
             self.assertEqual(path.stat().st_mtime_ns, mtime)
+
+    def test_old_reprocessed_article_replaces_processing_page(self):
+        self.process()
+        with tempfile.TemporaryDirectory() as directory:
+            history.write_processing_pages({"Example": [self.art]}, directory)
+            path = Path(directory) / self.art["processing_page"]
+            history.record_step(self.art, "Reprocessed old article", {})
+            self.art.update(new_today=False, _reprocessed=True)
+            history.write_processing_pages({"Example": [self.art]}, directory)
+            self.assertIn("Reprocessed old article", path.read_text())
 
     def test_filter_file_output_has_resolvable_status_link(self):
         self.process()

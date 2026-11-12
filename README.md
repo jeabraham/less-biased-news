@@ -208,17 +208,26 @@ See [TEST_PIPELINE.md](TEST_PIPELINE.md) for detailed documentation.
 
 ### New Features: Improved Cache Management
 
-The cache system now tracks all processed articles with timestamps and supports expiration:
+Processed articles are cached by query, URL and title. Entries expire 60 days
+after they were first seen, even if they are fetched again. Set
+`cache_expire_days` in the configuration to change this, or use
+`--expire-older-than DAYS` to override it for a run.
+
+With `--new-today`, unseen articles are processed, but appear in the New Today
+section only if their source publication time is within the last 7 days. Set
+`not_new_if_older_than` in the configuration to change the limit. Both
+`published_at` (MediaStack) and `publishedAt` (NewsAPI) are supported;
+timestamps without a timezone are treated as UTC. Missing or invalid dates are
+logged and treated as eligible for New Today. Older unseen articles still appear
+in their normal query sections.
 
 ```bash
 # Only process articles not seen before
 python news_filter.py --new-today
 
-# Remove cache entries older than 30 days before processing
+# Override the cache retention period for this run
 python news_filter.py --new-today --expire-older-than 30
 ```
-
-This prevents old recycled articles from appearing as "new" and allows flexible cache retention policies. See [CACHE_IMPROVEMENTS.md](CACHE_IMPROVEMENTS.md) for details.
 
 Or use the helper script:
 

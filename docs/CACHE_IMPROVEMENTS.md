@@ -22,11 +22,17 @@ The new system uses a single growing cache file per query:
 - `{query_name}_cache.json` - All processed articles with timestamps
 
 Improvements:
-1. **Growing Cache**: Articles accumulate indefinitely in cache
+1. **Retained Cache**: Articles remain in cache for 60 days after first seen by default
 2. **Timestamps**: Each article has a `first_seen` timestamp showing when it was first processed
-3. **Expiration**: Optional `--expire-older-than` flag to remove old entries
+3. **Expiration**: `cache_expire_days` or `--expire-older-than` controls retention
 4. **Better Keys**: Articles identified by both URL and title (more unique)
 5. **Same-Day Runs**: Multiple runs per day work correctly with `--new-today`
+6. **Publication Age**: Unseen articles older than `not_new_if_older_than` days (default 7) are processed but not marked new
+
+The age check uses the provider's `published_at` or `publishedAt` timestamp.
+Naive timestamps are interpreted as UTC. Missing or invalid dates are logged
+and remain eligible for New Today. Cache retention is based on `first_seen`,
+not publication date, and does not reset when a cached article is fetched again.
 
 ## Cache Structure
 
@@ -63,7 +69,7 @@ python news_filter.py --new-today
 # Remove cache entries older than 30 days, then process
 python news_filter.py --new-today --expire-older-than 30
 
-# Only expire cache, don't process new articles
+# Expire cache and process all fetched articles
 python news_filter.py --expire-older-than 30
 ```
 
@@ -92,7 +98,7 @@ python news_filter.py --new-today --expire-older-than 30
 # Tuesday: Only new articles from Tuesday are processed
 python news_filter.py --new-today --expire-older-than 30
 
-# Even if an article from 10 days ago reappears, it won't be processed
+# An unseen article from 10 days ago is processed but not marked new
 ```
 
 ### Scenario 2: Multiple Runs Per Day
@@ -102,7 +108,7 @@ python news_filter.py --new-today
 
 # Evening: Only articles added since morning are processed
 python news_filter.py --new-today
-# The morning articles are still marked as seen today
+# The morning articles are now marked as previously seen
 ```
 
 ### Scenario 3: Cache Management
@@ -113,7 +119,7 @@ python news_filter.py --new-today --expire-older-than 7
 # Keep longer history (90 days)
 python news_filter.py --new-today --expire-older-than 90
 
-# No expiration (unlimited cache)
+# Default retention (60 days)
 python news_filter.py --new-today
 ```
 
@@ -121,7 +127,7 @@ python news_filter.py --new-today
 
 Run the test suite to verify cache functionality:
 ```bash
-python test_cache_functionality.py
+python -m unittest tests.test_processing_history
 ```
 
 Run the demonstration to see cache behavior:

@@ -13,7 +13,7 @@ from ai_utils import AIUtils
 from article_fetcher import fetch_full_text_and_images
 
 from analyze_image_gender import analyze_image_gender, FEMALE_CONFIDENCE_THRESHOLD
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 import time
 
 import math
@@ -306,6 +306,21 @@ def get_article_key(article: dict) -> str:
     # Use both URL and title for better uniqueness
     return f"{url}||{title}"
 
+def is_recent_article(article: dict, cutoff: datetime) -> bool:
+    """Check the provider's publication time; retain unknown dates as new."""
+    published = article.get("published_at") or article.get("publishedAt")
+    try:
+        if not isinstance(published, str):
+            raise ValueError("missing or non-string publication date")
+        published_at = datetime.fromisoformat(published.replace("Z", "+00:00"))
+        if published_at.tzinfo is None:
+            published_at = published_at.replace(tzinfo=timezone.utc)
+        return published_at >= cutoff
+    except ValueError:
+        logger.warning("Cannot determine publication date for article %r: %r",
+                       article.get("title"), published)
+        return True
+
 def expire_cache(file_path: str, expire_days: int):
     """
     Remove cache entries older than the specified number of days.
@@ -331,7 +346,9 @@ def expire_cache(file_path: str, expire_days: int):
         if first_seen_str:
             try:
                 first_seen = datetime.fromisoformat(first_seen_str)
-                if first_seen < cutoff:
+                entry_cutoff = (datetime.now(first_seen.tzinfo) - timedelta(days=expire_days)
+                                if first_seen.tzinfo is not None else cutoff)
+                if first_seen < entry_cutoff:
                     expired_keys.append(key)
             except ValueError:
                 logger.warning(f"Invalid timestamp format for cache entry: {first_seen_str}")
@@ -376,6 +393,8 @@ def save_cache(file_path: str, data: dict):
         else:
             # Keep explicit False unless already True
             article.setdefault("is_female_leader", False)
+
+        article = {key: value for key, value in article.items() if key != "_reprocessed"}
 
         # Only add if not already in cache (preserves first_seen timestamp)
         if article_key not in existing_cache["articles"]:
@@ -554,6 +573,15 @@ def fetch_articles(qcfg: dict, cfg: dict, use_cache: bool = False) -> list:
 
 
 def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False, expire_days: int = None) -> dict:
+    if expire_days is None:
+        expire_days = cfg.get("cache_expire_days", 60)
+    not_new_if_older_than = cfg.get("not_new_if_older_than", 7)
+    for name, value in (("cache_expire_days", expire_days),
+                        ("not_new_if_older_than", not_new_if_older_than)):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a non-negative number of days")
+    new_cutoff = datetime.now(timezone.utc) - timedelta(days=not_new_if_older_than)
+
     logger.info("Initializing NewsAPI client")
     newsapi = NewsApiClient(api_key=cfg["newsapi"]["api_key"])
     logger.info("Loading spaCy model")
@@ -572,9 +600,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
         # ─── Load and Manage Cache for `new_today` Logic ────────────────
         cache_file = get_cache_file_path(name)  # Get single cache file path
         
-        # Expire old cache entries if requested
-        if expire_days is not None:
-            expire_cache(cache_file, expire_days)
+        expire_cache(cache_file, expire_days)
         
         cached_keys = set()
         cached_data_map = {}
@@ -590,7 +616,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
             
             logger.debug(f"Number of articles in cache: {len(cached_keys)}")
         else:
-            logger.info("new_today is False. Skipping cache operations.")
+            logger.info("new_today is False. Processing all fetched articles.")
 
         # ─── Fetch Raw Articles From the Right Source ────────────────
         raw_articles = fetch_articles(qcfg, cfg, use_cache=use_cache)
@@ -628,9 +654,11 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
             
             # Tag new articles based on cache, if enabled
             if new_today:
-                is_new = article_key not in cached_keys
-                art["new_today"] = is_new
-                if is_new:
+                is_uncached = article_key not in cached_keys
+                art["new_today"] = is_uncached and is_recent_article(art, new_cutoff)
+                if is_uncached:
+                    if not art["new_today"]:
+                        art["_reprocessed"] = True
                     categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
                                                             stats,
                                                             summarize_selected)
@@ -652,7 +680,7 @@ def fetch_and_filter(cfg: dict, use_cache: bool = False, new_today: bool = False
                         # Preserve female leader classification and leader name from cache
                         art["leader_name"] = cached_art.get("leader_name", None)
                         art["is_female_leader"] = cached_art.get("is_female_leader", art.get("status") == "female_leader")
-                logger.debug(f"{'New Title ->' if is_new else 'NOT New Title ->'} {art['title']}")
+                logger.debug(f"{'New Title ->' if art['new_today'] else 'NOT New Title ->'} {art['title']}")
             else:
                 categorize_article_and_generate_content(art, image_list, cfg, qcfg, aiclient, nlp, gender_map,
                                                         stats,
@@ -1276,7 +1304,7 @@ if __name__ == "__main__":
         "--expire-older-than", "-E",
         type=int,
         metavar="DAYS",
-        help="Expire cache entries older than the specified number of days"
+        help="Expire cache entries first seen more than DAYS ago (default: 60 or cache_expire_days in config)"
     )
     a = p.parse_args()
     main(

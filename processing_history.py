@@ -145,7 +145,7 @@ def write_processing_pages(results, output_dir, preserve_cached=True):
                 article["article_id"] = article_id
                 article["processing_page"] = f"story-{article_id}.html"
                 histories = stories.setdefault(article_id, [])
-                if article.get("new_today") is not False:
+                if article.get("new_today") is not False or article.get("_reprocessed"):
                     reprocessed.add(article_id)
                 if article["processing_history"] not in histories:
                     histories.append(article["processing_history"])

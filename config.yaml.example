@@ -4,6 +4,10 @@
 # This configuration file controls all aspects of the news filtering system.
 # Copy this file to config.yaml and fill in your API keys and preferences.
 
+# Article age limits, in days
+not_new_if_older_than: 7  # Only recently published, unseen articles appear in New Today
+cache_expire_days: 60     # Remove processed cache entries this long after first seen
+
 # =============================================================================
 # NEWS API PROVIDERS
 # =============================================================================
